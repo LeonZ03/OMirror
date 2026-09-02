@@ -1,0 +1,29 @@
+# Build outputs and bundled third-party binaries
+/dist/
+
+# Per-machine device identifiers (never commit)
+/devices.local.txt
+
+# IDE and compiler state
+/.vs/
+/bin/
+/obj/
+*.user
+*.suo
+*.pdb
+
+# Common secret-bearing files
+*.key
+*.pem
+*.pfx
+*.p12
+*.keystore
+*.jks
+.env
+.env.*
+
+# Local scratch files
+*.tmp
+*.log
+Thumbs.db
+Desktop.ini

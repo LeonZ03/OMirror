@@ -1,0 +1,4 @@
+# 显示名称|型号说明|ADB 序列号|投屏窗口 X 坐标
+# 用 `adb devices -l` 查询序列号，然后复制为 devices.local.txt 并填写真实值。
+Phone 1|Android device|SERIAL_FROM_ADB|80
+Phone 2|Android device|ANOTHER_SERIAL_FROM_ADB|560
