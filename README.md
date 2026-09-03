@@ -31,7 +31,8 @@ Copy-Item .\devices.example.txt .\devices.local.txt
 notepad .\devices.local.txt
 
 # 编译 EXE，并把指定的官方 scrcpy 目录复制进可运行包。
-.\build.ps1 -ScrcpyDir "C:\path\to\scrcpy-win64-v4.1"
+# 使用 scrcpy 4.1，并用新版 Platform Tools 覆盖其自带 ADB。
+.\build.ps1 -ScrcpyDir "C:\path\to\scrcpy-win64-v4.1" -AdbDir "C:\path\to\platform-tools"
 
 # 启动构建产物；运行时不依赖源码目录。
 .\dist\OPhoneMirror\OPhoneMirror.exe

@@ -194,7 +194,7 @@ namespace OPhoneMirror
             Controls.Add(footerStatus);
 
             Label version = new Label();
-            version.Text = "OPhoneMirror 1.8.6 · scrcpy 4.1";
+            version.Text = "OPhoneMirror 1.8.7 · scrcpy 4.1";
             version.ForeColor = muted;
             version.AutoSize = false;
             version.Location = new Point(426, 421);
@@ -654,10 +654,35 @@ namespace OPhoneMirror
                 if (!SetForegroundWindow(window))
                     return false;
 
-                // scrcpy documents MOD+O for display-off and MOD+Shift+O for display-on.
-                // SendKeys targets the now-active existing mirror; no second server is started.
+                // scrcpy documents MOD+O for display-off. When the physical display is off,
+                // a right-click inside the mirror explicitly turns it back on. The real mouse
+                // event is required because SDL ignores a posted background mouse message.
                 System.Threading.Thread.Sleep(60);
-                SendKeys.SendWait(turnOn ? "%+o" : "%o");
+                if (turnOn)
+                {
+                    NativeRect bounds;
+                    if (!GetWindowRect(window, out bounds))
+                        return false;
+
+                    Point previousCursor = Cursor.Position;
+                    try
+                    {
+                        Cursor.Position = new Point(
+                            bounds.Left + ((bounds.Right - bounds.Left) / 2),
+                            bounds.Top + ((bounds.Bottom - bounds.Top) / 2));
+                        MouseEvent(MouseRightDown, 0, 0, 0, UIntPtr.Zero);
+                        MouseEvent(MouseRightUp, 0, 0, 0, UIntPtr.Zero);
+                        System.Threading.Thread.Sleep(80);
+                    }
+                    finally
+                    {
+                        Cursor.Position = previousCursor;
+                    }
+                }
+                else
+                {
+                    SendKeys.SendWait("%o");
+                }
                 System.Threading.Thread.Sleep(40);
                 if (previousWindow != IntPtr.Zero && previousWindow != window)
                     SetForegroundWindow(previousWindow);
@@ -935,6 +960,29 @@ namespace OPhoneMirror
 
         [DllImport("user32.dll")]
         private static extern bool SetForegroundWindow(IntPtr window);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct NativeRect
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
+        }
+
+        private const uint MouseRightDown = 0x0008;
+        private const uint MouseRightUp = 0x0010;
+
+        [DllImport("user32.dll")]
+        private static extern bool GetWindowRect(IntPtr window, out NativeRect bounds);
+
+        [DllImport("user32.dll", EntryPoint = "mouse_event")]
+        private static extern void MouseEvent(
+            uint flags,
+            uint dx,
+            uint dy,
+            uint data,
+            UIntPtr extraInfo);
 
     }
 

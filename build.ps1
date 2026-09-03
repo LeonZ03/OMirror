@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [string]$ScrcpyDir = ""
+    [string]$ScrcpyDir = "",
+    [string]$AdbDir = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -59,6 +60,16 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Copy-Item -LiteralPath $ScrcpyDir -Destination (Join-Path $outputDir "scrcpy") -Recurse
+if ($AdbDir) {
+    $adbRuntimeFiles = @("adb.exe", "AdbWinApi.dll", "AdbWinUsbApi.dll")
+    foreach ($fileName in $adbRuntimeFiles) {
+        $sourceFile = Join-Path $AdbDir $fileName
+        if (-not (Test-Path -LiteralPath $sourceFile)) {
+            throw "ADB 运行时不完整，缺少：$sourceFile"
+        }
+        Copy-Item -LiteralPath $sourceFile -Destination (Join-Path $outputDir "scrcpy\$fileName") -Force
+    }
+}
 if (Test-Path -LiteralPath $deviceConfig) {
     Copy-Item -LiteralPath $deviceConfig -Destination (Join-Path $outputDir "devices.local.txt")
 }
