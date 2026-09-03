@@ -6,7 +6,7 @@ This file is the compact source of truth for AI agents working in this repositor
 
 - Name: `OPhoneMirror`.
 - Platform: Windows desktop, WinForms on .NET Framework.
-- Current UI version: `1.8.5`; bundled runtime expected: scrcpy `4.1`.
+- Current UI version: `1.8.6`; bundled runtime expected: scrcpy `4.1`.
 - There is intentionally no `.csproj`: `build.ps1` invokes the .NET Framework `csc.exe` directly.
 - Repository source is self-contained. `dist/` and `devices.local.txt` are local-only and ignored.
 
@@ -37,7 +37,7 @@ Keyboard settings live under `%LOCALAPPDATA%\OPhoneMirror`; they are runtime sta
 ## Verified implementation facts
 
 - Mirror launch preset: USB serial, H.264, 60 fps, 16 Mbps, zero video buffer, no audio, always on top, 450×900 window.
-- The persisted “仅熄手机屏幕” setting is hot-applied. Never add `--turn-screen-off` to the primary mirror or restart it for this feature. A separate invisible control-only scrcpy process (`--no-window --no-video --no-audio --turn-screen-off`) owns the physical-screen-off state; helper failure must not close the primary mirror. On disable, send scrcpy's `MOD+Shift+O` screen-on shortcut to the primary window before and after helper shutdown; `KEYCODE_WAKEUP` is only a fallback because scrcpy display-off may leave Android's wakefulness state at `Awake`.
+- The persisted “仅熄手机屏幕” setting is hot-applied through the one existing primary mirror only. It temporarily focuses that window, sends scrcpy's documented `MOD+O` / `MOD+Shift+O`, then restores the previous foreground window. Never add `--turn-screen-off` to the launch arguments or start a second control-only scrcpy instance: multiple long-lived scrcpy servers proved unstable on the Reno6 USB transport. `KEYCODE_WAKEUP` is only a fallback for screen-on.
 - Periodic ADB probes run on the thread pool behind an interlocked single-flight guard so a slow/offline USB transport cannot freeze the WinForms UI.
 - Input modes are deliberately different:
   - Short-phrase mode uses scrcpy default SDK keyboard and adds no `--keyboard`, `--raw-key-events`, or `--prefer-text` flag.
