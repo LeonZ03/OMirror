@@ -12,8 +12,8 @@ using System.Windows.Forms;
 
 [assembly: AssemblyTitle("OPhoneMirror")]
 [assembly: AssemblyProduct("OPhoneMirror")]
-[assembly: AssemblyVersion("1.8.10.0")]
-[assembly: AssemblyFileVersion("1.8.10.0")]
+[assembly: AssemblyVersion("1.8.11.0")]
+[assembly: AssemblyFileVersion("1.8.11.0")]
 
 namespace OPhoneMirror
 {
@@ -141,6 +141,7 @@ namespace OPhoneMirror
                 // WinForms assigns its own temporary owner while Show() runs, so attach to
                 // the external scrcpy window only after the overlay is fully visible.
                 SetWindowOwner(Handle, targetWindow);
+                ApplyPinnedState(true);
                 TrackTarget();
                 trackingTimer.Start();
             };
@@ -210,9 +211,7 @@ namespace OPhoneMirror
         private void TogglePinned()
         {
             bool next = !pinned;
-            IntPtr insertAfter = next ? HwndTopMost : HwndNoTopMost;
-            if (!SetWindowPos(targetWindow, insertAfter, 0, 0, 0, 0,
-                SwpNoMove | SwpNoSize | SwpNoActivate))
+            if (!ApplyPinnedState(next))
                 return;
 
             pinned = next;
@@ -220,6 +219,13 @@ namespace OPhoneMirror
             Invalidate();
             if (pinChanged != null)
                 pinChanged(pinned);
+        }
+
+        private bool ApplyPinnedState(bool value)
+        {
+            IntPtr insertAfter = value ? HwndTopMost : HwndNoTopMost;
+            return SetWindowPos(targetWindow, insertAfter, 0, 0, 0, 0,
+                SwpNoMove | SwpNoSize | SwpNoActivate);
         }
 
         private void UpdateToolTip()
@@ -450,7 +456,7 @@ namespace OPhoneMirror
             Controls.Add(footerStatus);
 
             Label version = new Label();
-            version.Text = "OPhoneMirror 1.8.10 · scrcpy 4.1";
+            version.Text = "OPhoneMirror 1.8.11 · scrcpy 4.1";
             version.ForeColor = muted;
             version.AutoSize = false;
             version.Location = new Point(426, 421);
@@ -741,7 +747,7 @@ namespace OPhoneMirror
                 bool normalizeShortPhrase = keyboardMode == 0 && previousDeviceMode == 1;
                 string keyboardArg = keyboardMode == 1 ? " --keyboard=uhid" : string.Empty;
                 string args = string.Format(
-                    "--serial={0} --window-title=\"{1} USB Low Latency\" --video-codec=h264 --max-fps=60 --video-bit-rate=16M --video-buffer=0 --no-audio --always-on-top --shortcut-mod=lalt --window-x={2} --window-y=80 --window-width=450 --window-height=900{3}",
+                    "--serial={0} --window-title=\"{1} USB Low Latency\" --video-codec=h264 --max-fps=60 --video-bit-rate=16M --video-buffer=0 --no-audio --shortcut-mod=lalt --window-x={2} --window-y=80 --window-width=450 --window-height=900{3}",
                     device.Serial, device.Name, device.WindowX, keyboardArg);
 
                 ProcessStartInfo psi = new ProcessStartInfo();
