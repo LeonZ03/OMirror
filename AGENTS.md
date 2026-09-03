@@ -6,7 +6,7 @@ This file is the compact source of truth for AI agents working in this repositor
 
 - Name: `OPhoneMirror`.
 - Platform: Windows desktop, WinForms on .NET Framework.
-- Current UI version: `1.8.7`; bundled runtime expected: scrcpy `4.1` with ADB `37.0.1`.
+- Current UI version: `1.8.9`; bundled runtime expected: scrcpy `4.1` with ADB `37.0.1`.
 - There is intentionally no `.csproj`: `build.ps1` invokes the .NET Framework `csc.exe` directly.
 - Repository source is self-contained. `dist/` and `devices.local.txt` are local-only and ignored.
 
@@ -36,7 +36,8 @@ Keyboard settings live under `%LOCALAPPDATA%\OPhoneMirror`; they are runtime sta
 
 ## Verified implementation facts
 
-- Mirror launch preset: USB serial, H.264, 60 fps, 16 Mbps, zero video buffer, no audio, always on top, 450×900 window.
+- Mirror launch preset: USB serial, H.264, 60 fps, 16 Mbps, zero video buffer, no audio, initially always on top, 450×900 window.
+- Each projection has a non-activating owned overlay button positioned in its native title bar. It toggles the scrcpy window between `HWND_TOPMOST` and `HWND_NOTOPMOST` without restarting the mirror. Ownership keeps the button above its projection but lets unrelated windows cover both when unpinned.
 - The persisted “仅熄手机屏幕” setting is hot-applied through the one existing primary mirror only. It temporarily focuses that window and uses scrcpy's documented `MOD+O` for display-off. For display-on it issues a real right-click at the mirror center (SDL ignores posted background mouse events), then restores both cursor position and the previous foreground window. Never add `--turn-screen-off` to the launch arguments or start a second control-only scrcpy instance: multiple long-lived scrcpy servers proved unstable on the Reno6 USB transport. `KEYCODE_WAKEUP` is only a fallback for screen-on.
 - Reno6 repeatedly entered ADB `offline` with the ADB `37.0.0` bundled by scrcpy 4.1, including while no OPhoneMirror/scrcpy process was running. Starting the separately installed Platform Tools ADB `37.0.1-15733141` immediately restored `device`. Release builds must therefore pass `-AdbDir` and bundle `adb.exe`, `AdbWinApi.dll`, and `AdbWinUsbApi.dll` from that tested runtime.
 - Periodic ADB probes run on the thread pool behind an interlocked single-flight guard so a slow/offline USB transport cannot freeze the WinForms UI.

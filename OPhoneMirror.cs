@@ -5,9 +5,15 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
 using System.Management;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Forms;
+
+[assembly: AssemblyTitle("OPhoneMirror")]
+[assembly: AssemblyProduct("OPhoneMirror")]
+[assembly: AssemblyVersion("1.8.9.0")]
+[assembly: AssemblyFileVersion("1.8.9.0")]
 
 namespace OPhoneMirror
 {
@@ -33,6 +39,8 @@ namespace OPhoneMirror
         public int MirrorProcessId;
         public int ScreenPowerRequestId;
         public bool ScreenOffApplied;
+        public int PinOverlayRequestId;
+        public PinOverlayForm PinOverlay;
     }
 
     internal sealed class RoundedPanel : Panel
@@ -62,6 +70,249 @@ namespace OPhoneMirror
             path.CloseFigure();
             return path;
         }
+    }
+
+    internal sealed class PinOverlayForm : Form
+    {
+        private const int GwlpHwndParent = -8;
+        private const int WsExToolWindow = 0x00000080;
+        private const int WsExNoActivate = 0x08000000;
+        private const int SmCxSize = 30;
+        private const int SmCySize = 31;
+        private const int SwHide = 0;
+        private const int SwShowNoActivate = 4;
+        private const uint SwpNoSize = 0x0001;
+        private const uint SwpNoMove = 0x0002;
+        private const uint SwpNoZOrder = 0x0004;
+        private const uint SwpNoActivate = 0x0010;
+        private static readonly IntPtr HwndTopMost = new IntPtr(-1);
+        private static readonly IntPtr HwndNoTopMost = new IntPtr(-2);
+
+        private readonly IntPtr targetWindow;
+        private readonly Action<bool> pinChanged;
+        private readonly Timer trackingTimer;
+        private readonly ToolTip toolTip;
+        private bool pinned;
+        private bool hovering;
+        private bool closing;
+
+        public PinOverlayForm(IntPtr targetWindow, Action<bool> pinChanged)
+        {
+            this.targetWindow = targetWindow;
+            this.pinChanged = pinChanged;
+            pinned = true;
+
+            FormBorderStyle = FormBorderStyle.None;
+            ShowInTaskbar = false;
+            StartPosition = FormStartPosition.Manual;
+            AutoScaleMode = AutoScaleMode.None;
+            Size = new Size(30, 26);
+            BackColor = Color.FromArgb(32, 32, 32);
+            Cursor = Cursors.Hand;
+            AccessibleName = "保持在最顶层";
+            DoubleBuffered = true;
+
+            toolTip = new ToolTip();
+            UpdateToolTip();
+
+            MouseEnter += delegate
+            {
+                hovering = true;
+                Invalidate();
+            };
+            MouseLeave += delegate
+            {
+                hovering = false;
+                Invalidate();
+            };
+            MouseUp += delegate(object sender, MouseEventArgs e)
+            {
+                if (e.Button != MouseButtons.Left)
+                    return;
+                TogglePinned();
+            };
+
+            trackingTimer = new Timer();
+            trackingTimer.Interval = 120;
+            trackingTimer.Tick += delegate { TrackTarget(); };
+            Shown += delegate
+            {
+                // WinForms assigns its own temporary owner while Show() runs, so attach to
+                // the external scrcpy window only after the overlay is fully visible.
+                SetWindowOwner(Handle, targetWindow);
+                TrackTarget();
+                trackingTimer.Start();
+            };
+        }
+
+        protected override bool ShowWithoutActivation
+        {
+            get { return true; }
+        }
+
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                CreateParams parameters = base.CreateParams;
+                parameters.ExStyle |= WsExToolWindow | WsExNoActivate;
+                return parameters;
+            }
+        }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            SetWindowOwner(Handle, targetWindow);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            e.Graphics.Clear(hovering ? Color.FromArgb(64, 64, 64) : Color.FromArgb(40, 40, 40));
+
+            Color iconColor = pinned ? Color.FromArgb(82, 135, 255) : Color.FromArgb(190, 194, 204);
+            using (SolidBrush brush = new SolidBrush(iconColor))
+            using (Pen pen = new Pen(iconColor, 1.8F))
+            {
+                e.Graphics.TranslateTransform(Width / 2F, Height / 2F);
+                e.Graphics.RotateTransform(35F);
+                e.Graphics.FillRectangle(brush, -5F, -8F, 10F, 5F);
+                e.Graphics.FillPolygon(brush, new PointF[]
+                {
+                    new PointF(-6F, -3F),
+                    new PointF(6F, -3F),
+                    new PointF(3F, 2F),
+                    new PointF(-3F, 2F)
+                });
+                e.Graphics.DrawLine(pen, 0F, 1F, 0F, 9F);
+                e.Graphics.ResetTransform();
+            }
+
+            if (!pinned)
+            {
+                using (Pen slash = new Pen(Color.FromArgb(235, 104, 104), 2F))
+                    e.Graphics.DrawLine(slash, 7, 20, 23, 5);
+            }
+        }
+
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            closing = true;
+            trackingTimer.Stop();
+            trackingTimer.Dispose();
+            toolTip.Dispose();
+            base.OnFormClosed(e);
+        }
+
+        private void TogglePinned()
+        {
+            bool next = !pinned;
+            IntPtr insertAfter = next ? HwndTopMost : HwndNoTopMost;
+            if (!SetWindowPos(targetWindow, insertAfter, 0, 0, 0, 0,
+                SwpNoMove | SwpNoSize | SwpNoActivate))
+                return;
+
+            pinned = next;
+            UpdateToolTip();
+            Invalidate();
+            SetForegroundWindow(targetWindow);
+            if (pinChanged != null)
+                pinChanged(pinned);
+        }
+
+        private void UpdateToolTip()
+        {
+            toolTip.SetToolTip(this, pinned
+                ? "保持在最顶层：已开启（点击取消）"
+                : "保持在最顶层：已关闭（点击开启）");
+        }
+
+        private void TrackTarget()
+        {
+            if (closing)
+                return;
+
+            if (!IsWindow(targetWindow))
+            {
+                closing = true;
+                Close();
+                return;
+            }
+
+            if (!IsWindowVisible(targetWindow) || IsIconic(targetWindow))
+            {
+                ShowWindow(Handle, SwHide);
+                return;
+            }
+
+            NativeRect bounds;
+            if (!GetWindowRect(targetWindow, out bounds))
+                return;
+
+            int captionButtonWidth = Math.Max(GetSystemMetrics(SmCxSize), 36);
+            int captionHeight = Math.Max(GetSystemMetrics(SmCySize), Height);
+            int x = bounds.Right - (captionButtonWidth * 3) - Width - 4;
+            int y = bounds.Top + Math.Max(0, (captionHeight - Height) / 2);
+            SetWindowPos(Handle, IntPtr.Zero, x, y, Width, Height,
+                SwpNoZOrder | SwpNoActivate);
+            ShowWindow(Handle, SwShowNoActivate);
+        }
+
+        private static void SetWindowOwner(IntPtr window, IntPtr owner)
+        {
+            if (IntPtr.Size == 8)
+                SetWindowLongPtr64(window, GwlpHwndParent, owner);
+            else
+                SetWindowLong32(window, GwlpHwndParent, owner.ToInt32());
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct NativeRect
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
+        }
+
+        [DllImport("user32.dll", EntryPoint = "SetWindowLongPtr", SetLastError = true)]
+        private static extern IntPtr SetWindowLongPtr64(IntPtr window, int index, IntPtr value);
+
+        [DllImport("user32.dll", EntryPoint = "SetWindowLong", SetLastError = true)]
+        private static extern int SetWindowLong32(IntPtr window, int index, int value);
+
+        [DllImport("user32.dll")]
+        private static extern bool SetWindowPos(
+            IntPtr window,
+            IntPtr insertAfter,
+            int x,
+            int y,
+            int width,
+            int height,
+            uint flags);
+
+        [DllImport("user32.dll")]
+        private static extern bool SetForegroundWindow(IntPtr window);
+
+        [DllImport("user32.dll")]
+        private static extern bool GetWindowRect(IntPtr window, out NativeRect bounds);
+
+        [DllImport("user32.dll")]
+        private static extern bool IsWindow(IntPtr window);
+
+        [DllImport("user32.dll")]
+        private static extern bool IsWindowVisible(IntPtr window);
+
+        [DllImport("user32.dll")]
+        private static extern bool IsIconic(IntPtr window);
+
+        [DllImport("user32.dll")]
+        private static extern bool ShowWindow(IntPtr window, int command);
+
+        [DllImport("user32.dll")]
+        private static extern int GetSystemMetrics(int index);
     }
 
     internal sealed class MainForm : Form
@@ -194,7 +445,7 @@ namespace OPhoneMirror
             Controls.Add(footerStatus);
 
             Label version = new Label();
-            version.Text = "OPhoneMirror 1.8.7 · scrcpy 4.1";
+            version.Text = "OPhoneMirror 1.8.9 · scrcpy 4.1";
             version.ForeColor = muted;
             version.AutoSize = false;
             version.Location = new Point(426, 421);
@@ -214,6 +465,8 @@ namespace OPhoneMirror
             keyboardCapture = new KeyboardCapture(this);
             FormClosed += delegate
             {
+                ClosePinOverlay(device1);
+                ClosePinOverlay(device2);
                 StopScreenControl(device1, true);
                 StopScreenControl(device2, true);
                 keyboardCapture.Dispose();
@@ -478,6 +731,7 @@ namespace OPhoneMirror
 
             try
             {
+                ClosePinOverlay(device);
                 int previousDeviceMode = LoadDeviceMode(device.Serial);
                 bool normalizeShortPhrase = keyboardMode == 0 && previousDeviceMode == 1;
                 string keyboardArg = keyboardMode == 1 ? " --keyboard=uhid" : string.Empty;
@@ -493,6 +747,7 @@ namespace OPhoneMirror
                 psi.CreateNoWindow = true;
                 device.MirrorProcess = Process.Start(psi);
                 device.MirrorProcessId = device.MirrorProcess.Id;
+                StartPinOverlay(device, device.MirrorProcess);
                 SaveDeviceMode(device.Serial, keyboardMode);
                 if (screenOffToggle.Checked)
                     StartScreenControl(device);
@@ -857,7 +1112,90 @@ namespace OPhoneMirror
             if (!pendingRestart.Contains(device))
                 pendingRestart.Add(device);
 
+            ClosePinOverlay(device);
             StopMirrorProcesses(running, false);
+        }
+
+        private void StartPinOverlay(DeviceCard device, Process mirrorProcess)
+        {
+            int requestId = System.Threading.Interlocked.Increment(ref device.PinOverlayRequestId);
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                IntPtr mirrorWindow = IntPtr.Zero;
+                for (int attempt = 0; attempt < 80; attempt++)
+                {
+                    if (IsDisposed || requestId != device.PinOverlayRequestId)
+                        return;
+
+                    try
+                    {
+                        if (mirrorProcess.HasExited)
+                            return;
+                        mirrorProcess.Refresh();
+                        mirrorWindow = mirrorProcess.MainWindowHandle;
+                        if (mirrorWindow != IntPtr.Zero)
+                            break;
+                    }
+                    catch
+                    {
+                        return;
+                    }
+
+                    System.Threading.Thread.Sleep(100);
+                }
+
+                if (mirrorWindow == IntPtr.Zero || IsDisposed)
+                    return;
+
+                try
+                {
+                    BeginInvoke((MethodInvoker)delegate
+                    {
+                        if (requestId != device.PinOverlayRequestId ||
+                            !IsProcessRunning(device.MirrorProcess) ||
+                            device.MirrorProcessId != mirrorProcess.Id)
+                            return;
+
+                        ClosePinOverlayCore(device, false);
+                        PinOverlayForm overlay = new PinOverlayForm(mirrorWindow, delegate(bool pinned)
+                        {
+                            footerStatus.Text = device.Name + (pinned
+                                ? "：已保持在最顶层"
+                                : "：已允许其他窗口覆盖");
+                        });
+                        device.PinOverlay = overlay;
+                        overlay.FormClosed += delegate
+                        {
+                            if (device.PinOverlay == overlay)
+                                device.PinOverlay = null;
+                        };
+                        overlay.Show();
+                    });
+                }
+                catch
+                {
+                    // The main form may close while scrcpy is creating its window.
+                }
+            });
+        }
+
+        private void ClosePinOverlay(DeviceCard device)
+        {
+            ClosePinOverlayCore(device, true);
+        }
+
+        private void ClosePinOverlayCore(DeviceCard device, bool cancelPending)
+        {
+            if (cancelPending)
+                System.Threading.Interlocked.Increment(ref device.PinOverlayRequestId);
+
+            PinOverlayForm overlay = device.PinOverlay;
+            device.PinOverlay = null;
+            if (overlay == null || overlay.IsDisposed)
+                return;
+
+            overlay.Close();
+            overlay.Dispose();
         }
 
         private void RestartMirrors(object sender, EventArgs e)
