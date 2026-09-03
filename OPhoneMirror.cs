@@ -194,7 +194,7 @@ namespace OPhoneMirror
             Controls.Add(footerStatus);
 
             Label version = new Label();
-            version.Text = "OPhoneMirror 1.8.4 · scrcpy 4.1";
+            version.Text = "OPhoneMirror 1.8.5 · scrcpy 4.1";
             version.ForeColor = muted;
             version.AutoSize = false;
             version.Location = new Point(426, 421);
@@ -610,7 +610,7 @@ namespace OPhoneMirror
                             ProcessStartInfo psi = new ProcessStartInfo();
                             psi.FileName = scrcpyPath;
                             psi.Arguments = string.Format(
-                                "--serial={0} --no-video --no-audio --turn-screen-off --no-power-on --no-clipboard-autosync",
+                                "--serial={0} --no-window --no-video --no-audio --turn-screen-off --no-power-on --no-clipboard-autosync",
                                 device.Serial);
                             psi.WorkingDirectory = Path.GetDirectoryName(scrcpyPath);
                             psi.UseShellExecute = false;
@@ -660,33 +660,121 @@ namespace OPhoneMirror
             Process process = device.ScreenControlProcess;
             device.ScreenControlProcess = null;
 
-            if (process != null)
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
             {
-                try
+                AdbResult wakeResult = null;
+                bool mirrorWakeSent = false;
+
+                // scrcpy screen-off changes display power without putting Android to sleep,
+                // so KEYCODE_WAKEUP alone may be ignored as "already awake". Ask the primary
+                // mirror to run its official MOD+Shift+O screen-on shortcut as well.
+                if (wakeDevice && !string.IsNullOrWhiteSpace(device.Serial))
                 {
-                    if (!process.HasExited)
+                    mirrorWakeSent = SendMirrorScreenOn(device);
+                    wakeResult = WakeDevice(device.Serial);
+                }
+
+                if (process != null)
+                {
+                    try
                     {
-                        process.Kill();
-                        process.WaitForExit(1200);
+                        if (!process.HasExited)
+                        {
+                            process.Kill();
+                            process.WaitForExit(1200);
+                        }
+                    }
+                    catch
+                    {
+                        // The helper may exit while its state is being inspected.
+                    }
+                    finally
+                    {
+                        process.Dispose();
                     }
                 }
-                catch
-                {
-                    // The helper may exit while its state is being inspected.
-                }
-                finally
-                {
-                    process.Dispose();
-                }
-            }
 
-            if (wakeDevice && !string.IsNullOrWhiteSpace(device.Serial))
-            {
-                System.Threading.ThreadPool.QueueUserWorkItem(delegate
+                if (!wakeDevice || string.IsNullOrWhiteSpace(device.Serial))
+                    return;
+
+                // A second idempotent WAKEUP covers the helper/server shutdown boundary.
+                // Retry once because USB ADB may need a moment to settle after scrcpy exits.
+                System.Threading.Thread.Sleep(250);
+                mirrorWakeSent = SendMirrorScreenOn(device) || mirrorWakeSent;
+                wakeResult = WakeDevice(device.Serial);
+                if (!wakeResult.Success)
                 {
-                    System.Threading.Thread.Sleep(500);
-                    new AdbClient(adbPath, device.Serial).Shell("input keyevent 224", 5000);
+                    System.Threading.Thread.Sleep(750);
+                    mirrorWakeSent = SendMirrorScreenOn(device) || mirrorWakeSent;
+                    wakeResult = WakeDevice(device.Serial);
+                }
+
+                SetWakeResultStatus(device, mirrorWakeSent || wakeResult.Success);
+            });
+        }
+
+        private bool SendMirrorScreenOn(DeviceCard device)
+        {
+            try
+            {
+                Process process = device.MirrorProcess;
+                if (!IsProcessRunning(process))
+                    return false;
+
+                process.Refresh();
+                IntPtr window = process.MainWindowHandle;
+                if (window == IntPtr.Zero)
+                    return false;
+
+                // scrcpy's documented MOD+Shift+O shortcut turns the physical display on.
+                // Posting directly to its window avoids stealing keyboard focus from the user.
+                bool sent = PostMessage(window, WmKeyDown, new IntPtr(VkMenu), KeyMessageData(0x38, false));
+                sent = PostMessage(window, WmKeyDown, new IntPtr(VkShift), KeyMessageData(0x2A, false)) && sent;
+                sent = PostMessage(window, WmKeyDown, new IntPtr(VkO), KeyMessageData(0x18, false)) && sent;
+                sent = PostMessage(window, WmKeyUp, new IntPtr(VkO), KeyMessageData(0x18, true)) && sent;
+                sent = PostMessage(window, WmKeyUp, new IntPtr(VkShift), KeyMessageData(0x2A, true)) && sent;
+                sent = PostMessage(window, WmKeyUp, new IntPtr(VkMenu), KeyMessageData(0x38, true)) && sent;
+                return sent;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static IntPtr KeyMessageData(int scanCode, bool keyUp)
+        {
+            long value = 1L | ((long)scanCode << 16);
+            if (keyUp)
+                value |= (1L << 30) | (1L << 31);
+            return new IntPtr(value);
+        }
+
+        private AdbResult WakeDevice(string serial)
+        {
+            return new AdbClient(adbPath, serial).Shell("input keyevent 224", 2500);
+        }
+
+        private void SetWakeResultStatus(DeviceCard device, bool success)
+        {
+            if (IsDisposed || Disposing)
+                return;
+
+            try
+            {
+                BeginInvoke((MethodInvoker)delegate
+                {
+                    if (!screenOffToggle.Checked)
+                    {
+                        footerStatus.Text = success
+                            ? device.Name + "：手机实体屏幕已恢复"
+                            : device.Name + "：未能自动点亮，请按一下手机电源键";
+                    }
                 });
+            }
+            catch
+            {
+                // The main form may close while the wake command is completing.
             }
         }
 
@@ -925,6 +1013,15 @@ namespace OPhoneMirror
 
         [DllImport("user32.dll")]
         private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+
+        private const int WmKeyDown = 0x0100;
+        private const int WmKeyUp = 0x0101;
+        private const int VkShift = 0x10;
+        private const int VkMenu = 0x12;
+        private const int VkO = 0x4F;
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool PostMessage(IntPtr window, int message, IntPtr wParam, IntPtr lParam);
 
     }
 
