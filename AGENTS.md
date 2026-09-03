@@ -6,7 +6,7 @@ This file is the compact source of truth for AI agents working in this repositor
 
 - Name: `OPhoneMirror`.
 - Platform: Windows desktop, WinForms on .NET Framework.
-- Current UI version: `1.8.2`; bundled runtime expected: scrcpy `4.1`.
+- Current UI version: `1.8.3`; bundled runtime expected: scrcpy `4.1`.
 - There is intentionally no `.csproj`: `build.ps1` invokes the .NET Framework `csc.exe` directly.
 - Repository source is self-contained. `dist/` and `devices.local.txt` are local-only and ignored.
 
@@ -37,6 +37,7 @@ Keyboard settings live under `%LOCALAPPDATA%\OPhoneMirror`; they are runtime sta
 ## Verified implementation facts
 
 - Mirror launch preset: USB serial, H.264, 60 fps, 16 Mbps, zero video buffer, no audio, always on top, 450×900 window.
+- Optional persisted `screen-off-on-start.txt` setting adds `--turn-screen-off --stay-awake` to the initial scrcpy launch. There is intentionally no runtime screen-toggle process or mirror restart; physical-screen changes during a session use scrcpy's own `Alt+O` / `Alt+Shift+O` shortcuts.
 - Input modes are deliberately different:
   - Short-phrase mode uses scrcpy default SDK keyboard and adds no `--keyboard`, `--raw-key-events`, or `--prefer-text` flag.
   - Numeric-candidate mode adds only `--keyboard=uhid`.

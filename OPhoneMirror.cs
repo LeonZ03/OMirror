@@ -81,7 +81,9 @@ namespace OPhoneMirror
         private readonly Timer restartTimer;
         private readonly Label footerStatus;
         private readonly ComboBox keyboardModeSelector;
+        private readonly CheckBox screenOffOnStart;
         private readonly string settingsPath;
+        private readonly string screenOffSettingsPath;
         private readonly List<DeviceCard> pendingRestart = new List<DeviceCard>();
         private readonly KeyboardCapture keyboardCapture;
         private int keyboardMode;
@@ -95,6 +97,9 @@ namespace OPhoneMirror
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "OPhoneMirror",
                 "keyboard-mode.txt");
+            screenOffSettingsPath = Path.Combine(
+                Path.GetDirectoryName(settingsPath),
+                "screen-off-on-start.txt");
             keyboardMode = LoadKeyboardMode();
 
             Text = "OPhoneMirror · 手机有线投屏";
@@ -146,6 +151,15 @@ namespace OPhoneMirror
             infoTitle.Location = new Point(18, 12);
             info.Controls.Add(infoTitle);
 
+            screenOffOnStart = new CheckBox();
+            screenOffOnStart.Text = "启动时仅熄手机屏幕";
+            screenOffOnStart.ForeColor = foreground;
+            screenOffOnStart.AutoSize = true;
+            screenOffOnStart.Location = new Point(135, 12);
+            screenOffOnStart.Checked = LoadScreenOffOnStart();
+            screenOffOnStart.CheckedChanged += delegate { SaveScreenOffOnStart(); };
+            info.Controls.Add(screenOffOnStart);
+
             Label infoText = new Label();
             infoText.Text = "USB · 60 fps · 双向剪贴板 · 文件互传 · 聚焦投屏时 Alt+Tab→最近任务、Win→桌面";
             infoText.ForeColor = muted;
@@ -177,10 +191,12 @@ namespace OPhoneMirror
             Controls.Add(footerStatus);
 
             Label version = new Label();
-            version.Text = "OPhoneMirror 1.8.2 · scrcpy 4.1";
+            version.Text = "OPhoneMirror 1.8.3 · scrcpy 4.1";
             version.ForeColor = muted;
-            version.AutoSize = true;
-            version.Location = new Point(614, 425);
+            version.AutoSize = false;
+            version.Location = new Point(426, 421);
+            version.Size = new Size(260, 24);
+            version.TextAlign = ContentAlignment.MiddleRight;
             version.Anchor = AnchorStyles.Right | AnchorStyles.Bottom;
             Controls.Add(version);
 
@@ -432,9 +448,10 @@ namespace OPhoneMirror
                 int previousDeviceMode = LoadDeviceMode(device.Serial);
                 bool normalizeShortPhrase = keyboardMode == 0 && previousDeviceMode == 1;
                 string keyboardArg = keyboardMode == 1 ? " --keyboard=uhid" : string.Empty;
+                string screenArg = screenOffOnStart.Checked ? " --turn-screen-off --stay-awake" : string.Empty;
                 string args = string.Format(
-                    "--serial={0} --window-title=\"{1} USB Low Latency\" --video-codec=h264 --max-fps=60 --video-bit-rate=16M --video-buffer=0 --no-audio --always-on-top --window-x={2} --window-y=80 --window-width=450 --window-height=900{3}",
-                    device.Serial, device.Name, device.WindowX, keyboardArg);
+                    "--serial={0} --window-title=\"{1} USB Low Latency\" --video-codec=h264 --max-fps=60 --video-bit-rate=16M --video-buffer=0 --no-audio --always-on-top --window-x={2} --window-y=80 --window-width=450 --window-height=900{3}{4}",
+                    device.Serial, device.Name, device.WindowX, keyboardArg, screenArg);
 
                 ProcessStartInfo psi = new ProcessStartInfo();
                 psi.FileName = scrcpyPath;
@@ -478,6 +495,34 @@ namespace OPhoneMirror
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(settingsPath));
                 File.WriteAllText(settingsPath, keyboardMode.ToString(), Encoding.UTF8);
+            }
+            catch
+            {
+                // A settings write failure must not prevent mirroring.
+            }
+        }
+
+        private bool LoadScreenOffOnStart()
+        {
+            try
+            {
+                return File.ReadAllText(screenOffSettingsPath).Trim() == "1";
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private void SaveScreenOffOnStart()
+        {
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(screenOffSettingsPath));
+                File.WriteAllText(
+                    screenOffSettingsPath,
+                    screenOffOnStart.Checked ? "1" : "0",
+                    Encoding.UTF8);
             }
             catch
             {
