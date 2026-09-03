@@ -6,7 +6,7 @@ This file is the compact source of truth for AI agents working in this repositor
 
 - Name: `OPhoneMirror`.
 - Platform: Windows desktop, WinForms on .NET Framework.
-- Current UI version: `1.8.11`; bundled runtime expected: scrcpy `4.1` with ADB `37.0.1`.
+- Current UI version: `1.8.13`; bundled runtime expected: scrcpy `4.1` with ADB `37.0.1`.
 - There is intentionally no `.csproj`: `build.ps1` invokes the .NET Framework `csc.exe` directly.
 - Repository source is self-contained. `dist/` and `devices.local.txt` are local-only and ignored.
 
@@ -32,12 +32,11 @@ display name|model description|adb serial|window x
 
 The executable reads this file beside itself. Missing/invalid entries become disabled “未配置设备” cards. Never restore hard-coded serials, IP addresses, usernames, or absolute user paths in tracked source.
 
-Keyboard settings live under `%LOCALAPPDATA%\OPhoneMirror`; they are runtime state, not repository content.
+Keyboard, screen-off, and always-on-top settings live under `%LOCALAPPDATA%\OPhoneMirror`; they are runtime state, not repository content.
 
 ## Verified implementation facts
 
-- Mirror launch preset: USB serial, H.264, 60 fps, 16 Mbps, zero video buffer, no audio, 450×900 window. Do not pass scrcpy's `--always-on-top`; OPhoneMirror owns that state so scrcpy cannot reassert it after the user unpins.
-- Each projection has a non-activating owned overlay button positioned in its native title bar. On creation it applies `HWND_TOPMOST`; later clicks toggle the scrcpy window between `HWND_TOPMOST` and `HWND_NOTOPMOST` without restarting the mirror. Ownership keeps the button above its projection but lets unrelated windows cover both when unpinned.
+- Mirror launch preset: USB serial, H.264, 60 fps, 16 Mbps, zero video buffer, no audio, 450×900 window. Do not pass scrcpy's `--always-on-top`; the persisted control-panel checkbox applies `HWND_TOPMOST` or `HWND_NOTOPMOST` after the window is created and hot-applies the same state without restarting scrcpy.
 - The persisted “仅熄手机屏幕” setting is hot-applied through the one existing primary mirror only. It temporarily focuses that window and uses scrcpy's documented `MOD+O` for display-off. For display-on it issues a real right-click at the mirror center (SDL ignores posted background mouse events), then restores both cursor position and the previous foreground window. Never add `--turn-screen-off` to the launch arguments or start a second control-only scrcpy instance: multiple long-lived scrcpy servers proved unstable on the Reno6 USB transport. `KEYCODE_WAKEUP` is only a fallback for screen-on.
 - Reno6 repeatedly entered ADB `offline` with the ADB `37.0.0` bundled by scrcpy 4.1, including while no OPhoneMirror/scrcpy process was running. Starting the separately installed Platform Tools ADB `37.0.1-15733141` immediately restored `device`. Release builds must therefore pass `-AdbDir` and bundle `adb.exe`, `AdbWinApi.dll`, and `AdbWinUsbApi.dll` from that tested runtime.
 - Periodic ADB probes run on the thread pool behind an interlocked single-flight guard so a slow/offline USB transport cannot freeze the WinForms UI.
