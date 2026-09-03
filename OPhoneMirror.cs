@@ -12,8 +12,8 @@ using System.Windows.Forms;
 
 [assembly: AssemblyTitle("OPhoneMirror")]
 [assembly: AssemblyProduct("OPhoneMirror")]
-[assembly: AssemblyVersion("1.8.9.0")]
-[assembly: AssemblyFileVersion("1.8.9.0")]
+[assembly: AssemblyVersion("1.8.10.0")]
+[assembly: AssemblyFileVersion("1.8.10.0")]
 
 namespace OPhoneMirror
 {
@@ -95,6 +95,7 @@ namespace OPhoneMirror
         private bool pinned;
         private bool hovering;
         private bool closing;
+        private bool hiddenForTarget;
 
         public PinOverlayForm(IntPtr targetWindow, Action<bool> pinChanged)
         {
@@ -217,7 +218,6 @@ namespace OPhoneMirror
             pinned = next;
             UpdateToolTip();
             Invalidate();
-            SetForegroundWindow(targetWindow);
             if (pinChanged != null)
                 pinChanged(pinned);
         }
@@ -243,7 +243,11 @@ namespace OPhoneMirror
 
             if (!IsWindowVisible(targetWindow) || IsIconic(targetWindow))
             {
-                ShowWindow(Handle, SwHide);
+                if (!hiddenForTarget)
+                {
+                    ShowWindow(Handle, SwHide);
+                    hiddenForTarget = true;
+                }
                 return;
             }
 
@@ -257,7 +261,11 @@ namespace OPhoneMirror
             int y = bounds.Top + Math.Max(0, (captionHeight - Height) / 2);
             SetWindowPos(Handle, IntPtr.Zero, x, y, Width, Height,
                 SwpNoZOrder | SwpNoActivate);
-            ShowWindow(Handle, SwShowNoActivate);
+            if (hiddenForTarget)
+            {
+                ShowWindow(Handle, SwShowNoActivate);
+                hiddenForTarget = false;
+            }
         }
 
         private static void SetWindowOwner(IntPtr window, IntPtr owner)
@@ -292,9 +300,6 @@ namespace OPhoneMirror
             int width,
             int height,
             uint flags);
-
-        [DllImport("user32.dll")]
-        private static extern bool SetForegroundWindow(IntPtr window);
 
         [DllImport("user32.dll")]
         private static extern bool GetWindowRect(IntPtr window, out NativeRect bounds);
@@ -445,7 +450,7 @@ namespace OPhoneMirror
             Controls.Add(footerStatus);
 
             Label version = new Label();
-            version.Text = "OPhoneMirror 1.8.9 · scrcpy 4.1";
+            version.Text = "OPhoneMirror 1.8.10 · scrcpy 4.1";
             version.ForeColor = muted;
             version.AutoSize = false;
             version.Location = new Point(426, 421);
