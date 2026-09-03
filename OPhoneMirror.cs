@@ -31,6 +31,8 @@ namespace OPhoneMirror
         public int WindowX;
         public Process MirrorProcess;
         public int MirrorProcessId;
+        public Process ScreenControlProcess;
+        public bool ScreenControlStarting;
     }
 
     internal sealed class RoundedPanel : Panel
@@ -81,12 +83,13 @@ namespace OPhoneMirror
         private readonly Timer restartTimer;
         private readonly Label footerStatus;
         private readonly ComboBox keyboardModeSelector;
-        private readonly CheckBox screenOffOnStart;
+        private readonly CheckBox screenOffToggle;
         private readonly string settingsPath;
         private readonly string screenOffSettingsPath;
         private readonly List<DeviceCard> pendingRestart = new List<DeviceCard>();
         private readonly KeyboardCapture keyboardCapture;
         private int keyboardMode;
+        private int refreshInProgress;
 
         public MainForm()
         {
@@ -99,7 +102,7 @@ namespace OPhoneMirror
                 "keyboard-mode.txt");
             screenOffSettingsPath = Path.Combine(
                 Path.GetDirectoryName(settingsPath),
-                "screen-off-on-start.txt");
+                "screen-off-enabled.txt");
             keyboardMode = LoadKeyboardMode();
 
             Text = "OPhoneMirror · 手机有线投屏";
@@ -151,14 +154,14 @@ namespace OPhoneMirror
             infoTitle.Location = new Point(18, 12);
             info.Controls.Add(infoTitle);
 
-            screenOffOnStart = new CheckBox();
-            screenOffOnStart.Text = "启动时仅熄手机屏幕";
-            screenOffOnStart.ForeColor = foreground;
-            screenOffOnStart.AutoSize = true;
-            screenOffOnStart.Location = new Point(135, 12);
-            screenOffOnStart.Checked = LoadScreenOffOnStart();
-            screenOffOnStart.CheckedChanged += delegate { SaveScreenOffOnStart(); };
-            info.Controls.Add(screenOffOnStart);
+            screenOffToggle = new CheckBox();
+            screenOffToggle.Text = "仅熄手机屏幕";
+            screenOffToggle.ForeColor = foreground;
+            screenOffToggle.AutoSize = true;
+            screenOffToggle.Location = new Point(135, 12);
+            screenOffToggle.Checked = LoadScreenOffSetting();
+            screenOffToggle.CheckedChanged += ScreenOffSettingChanged;
+            info.Controls.Add(screenOffToggle);
 
             Label infoText = new Label();
             infoText.Text = "USB · 60 fps · 双向剪贴板 · 文件互传 · 聚焦投屏时 Alt+Tab→最近任务、Win→桌面";
@@ -191,7 +194,7 @@ namespace OPhoneMirror
             Controls.Add(footerStatus);
 
             Label version = new Label();
-            version.Text = "OPhoneMirror 1.8.3 · scrcpy 4.1";
+            version.Text = "OPhoneMirror 1.8.4 · scrcpy 4.1";
             version.ForeColor = muted;
             version.AutoSize = false;
             version.Location = new Point(426, 421);
@@ -209,7 +212,12 @@ namespace OPhoneMirror
             restartTimer.Tick += RestartMirrors;
 
             keyboardCapture = new KeyboardCapture(this);
-            FormClosed += delegate { keyboardCapture.Dispose(); };
+            FormClosed += delegate
+            {
+                StopScreenControl(device1, true);
+                StopScreenControl(device2, true);
+                keyboardCapture.Dispose();
+            };
             Shown += delegate
             {
                 RefreshDevices();
@@ -378,16 +386,43 @@ namespace OPhoneMirror
                 return;
             }
 
-            bool device1Online = IsUsbDeviceOnline(device1.Serial);
-            bool device2Online = IsUsbDeviceOnline(device2.Serial);
-            SetDeviceState(device1, device1Online);
-            SetDeviceState(device2, device2Online);
+            if (System.Threading.Interlocked.CompareExchange(ref refreshInProgress, 1, 0) != 0)
+                return;
 
-            int count = (device1Online ? 1 : 0) + (device2Online ? 1 : 0);
-            if (count == 0)
-                footerStatus.Text = "未发现已授权的目标 USB 设备";
-            else
-                footerStatus.Text = string.Format("已连接 {0} 台目标设备", count);
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                bool device1Online = IsUsbDeviceOnline(device1.Serial);
+                bool device2Online = IsUsbDeviceOnline(device2.Serial);
+
+                if (IsDisposed)
+                {
+                    System.Threading.Interlocked.Exchange(ref refreshInProgress, 0);
+                    return;
+                }
+
+                try
+                {
+                    BeginInvoke((MethodInvoker)delegate
+                    {
+                        RefreshScreenControlState(device1);
+                        RefreshScreenControlState(device2);
+                        SetDeviceState(device1, device1Online);
+                        SetDeviceState(device2, device2Online);
+
+                        int connectedCount = (device1Online ? 1 : 0) + (device2Online ? 1 : 0);
+                        if (connectedCount == 0)
+                            footerStatus.Text = "未发现已授权的目标 USB 设备";
+                        else
+                            footerStatus.Text = string.Format("已连接 {0} 台目标设备", connectedCount);
+
+                        System.Threading.Interlocked.Exchange(ref refreshInProgress, 0);
+                    });
+                }
+                catch
+                {
+                    System.Threading.Interlocked.Exchange(ref refreshInProgress, 0);
+                }
+            });
         }
 
         private bool IsUsbDeviceOnline(string serial)
@@ -448,10 +483,9 @@ namespace OPhoneMirror
                 int previousDeviceMode = LoadDeviceMode(device.Serial);
                 bool normalizeShortPhrase = keyboardMode == 0 && previousDeviceMode == 1;
                 string keyboardArg = keyboardMode == 1 ? " --keyboard=uhid" : string.Empty;
-                string screenArg = screenOffOnStart.Checked ? " --turn-screen-off --stay-awake" : string.Empty;
                 string args = string.Format(
-                    "--serial={0} --window-title=\"{1} USB Low Latency\" --video-codec=h264 --max-fps=60 --video-bit-rate=16M --video-buffer=0 --no-audio --always-on-top --window-x={2} --window-y=80 --window-width=450 --window-height=900{3}{4}",
-                    device.Serial, device.Name, device.WindowX, keyboardArg, screenArg);
+                    "--serial={0} --window-title=\"{1} USB Low Latency\" --video-codec=h264 --max-fps=60 --video-bit-rate=16M --video-buffer=0 --no-audio --always-on-top --window-x={2} --window-y=80 --window-width=450 --window-height=900{3}",
+                    device.Serial, device.Name, device.WindowX, keyboardArg);
 
                 ProcessStartInfo psi = new ProcessStartInfo();
                 psi.FileName = scrcpyPath;
@@ -462,6 +496,8 @@ namespace OPhoneMirror
                 device.MirrorProcess = Process.Start(psi);
                 device.MirrorProcessId = device.MirrorProcess.Id;
                 SaveDeviceMode(device.Serial, keyboardMode);
+                if (screenOffToggle.Checked)
+                    StartScreenControl(device);
                 if (normalizeShortPhrase)
                     NormalizeShortPhraseModeAsync(device);
                 footerStatus.Text = "已启动 " + device.Name + " · " + KeyboardModeName();
@@ -502,7 +538,7 @@ namespace OPhoneMirror
             }
         }
 
-        private bool LoadScreenOffOnStart()
+        private bool LoadScreenOffSetting()
         {
             try
             {
@@ -514,19 +550,157 @@ namespace OPhoneMirror
             }
         }
 
-        private void SaveScreenOffOnStart()
+        private void SaveScreenOffSetting()
         {
             try
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(screenOffSettingsPath));
                 File.WriteAllText(
                     screenOffSettingsPath,
-                    screenOffOnStart.Checked ? "1" : "0",
+                    screenOffToggle.Checked ? "1" : "0",
                     Encoding.UTF8);
             }
             catch
             {
                 // A settings write failure must not prevent mirroring.
+            }
+        }
+
+        private void ScreenOffSettingChanged(object sender, EventArgs e)
+        {
+            SaveScreenOffSetting();
+            if (screenOffToggle.Checked)
+            {
+                StartScreenControl(device1);
+                StartScreenControl(device2);
+                footerStatus.Text = "已开启“仅熄手机屏幕”；正在运行的投屏将热生效";
+            }
+            else
+            {
+                StopScreenControl(device1, true);
+                StopScreenControl(device2, true);
+                footerStatus.Text = "已关闭“仅熄手机屏幕”；手机实体屏幕正在恢复";
+            }
+        }
+
+        private void StartScreenControl(DeviceCard device)
+        {
+            if (!screenOffToggle.Checked || device.ScreenControlStarting ||
+                !IsProcessRunning(device.MirrorProcess) || IsProcessRunning(device.ScreenControlProcess))
+                return;
+
+            device.ScreenControlStarting = true;
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                System.Threading.Thread.Sleep(900);
+                if (IsDisposed)
+                    return;
+
+                try
+                {
+                    BeginInvoke((MethodInvoker)delegate
+                    {
+                        device.ScreenControlStarting = false;
+                        if (!screenOffToggle.Checked || !IsProcessRunning(device.MirrorProcess) ||
+                            IsProcessRunning(device.ScreenControlProcess))
+                            return;
+
+                        try
+                        {
+                            ProcessStartInfo psi = new ProcessStartInfo();
+                            psi.FileName = scrcpyPath;
+                            psi.Arguments = string.Format(
+                                "--serial={0} --no-video --no-audio --turn-screen-off --no-power-on --no-clipboard-autosync",
+                                device.Serial);
+                            psi.WorkingDirectory = Path.GetDirectoryName(scrcpyPath);
+                            psi.UseShellExecute = false;
+                            psi.CreateNoWindow = true;
+                            device.ScreenControlProcess = Process.Start(psi);
+                            footerStatus.Text = device.Name + "：已热切换为仅关闭手机实体屏幕";
+                        }
+                        catch (Exception ex)
+                        {
+                            MessageBox.Show(
+                                "无法启动熄屏控制，主投屏不受影响：\n\n" + ex.Message,
+                                "熄屏控制失败",
+                                MessageBoxButtons.OK,
+                                MessageBoxIcon.Warning);
+                        }
+                    });
+                }
+                catch
+                {
+                    device.ScreenControlStarting = false;
+                }
+            });
+        }
+
+        private void RefreshScreenControlState(DeviceCard device)
+        {
+            if (device.ScreenControlProcess == null)
+                return;
+
+            if (!IsProcessRunning(device.MirrorProcess))
+            {
+                StopScreenControl(device, true);
+                return;
+            }
+
+            if (IsProcessRunning(device.ScreenControlProcess))
+                return;
+
+            device.ScreenControlProcess.Dispose();
+            device.ScreenControlProcess = null;
+            footerStatus.Text = device.Name + "：熄屏控制已退出，主投屏未被关闭";
+        }
+
+        private void StopScreenControl(DeviceCard device, bool wakeDevice)
+        {
+            device.ScreenControlStarting = false;
+            Process process = device.ScreenControlProcess;
+            device.ScreenControlProcess = null;
+
+            if (process != null)
+            {
+                try
+                {
+                    if (!process.HasExited)
+                    {
+                        process.Kill();
+                        process.WaitForExit(1200);
+                    }
+                }
+                catch
+                {
+                    // The helper may exit while its state is being inspected.
+                }
+                finally
+                {
+                    process.Dispose();
+                }
+            }
+
+            if (wakeDevice && !string.IsNullOrWhiteSpace(device.Serial))
+            {
+                System.Threading.ThreadPool.QueueUserWorkItem(delegate
+                {
+                    System.Threading.Thread.Sleep(500);
+                    new AdbClient(adbPath, device.Serial).Shell("input keyevent 224", 5000);
+                });
+            }
+        }
+
+        private static bool IsProcessRunning(Process process)
+        {
+            if (process == null)
+                return false;
+            try
+            {
+                return !process.HasExited;
+            }
+            catch
+            {
+                return false;
             }
         }
 
@@ -699,6 +873,10 @@ namespace OPhoneMirror
                     {
                         string commandLine = Convert.ToString(item["CommandLine"]);
                         if (commandLine.IndexOf("--serial=" + device.Serial, StringComparison.OrdinalIgnoreCase) < 0)
+                            continue;
+                        if (commandLine.IndexOf("--no-video", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                            commandLine.IndexOf("--no-audio", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                            commandLine.IndexOf("--turn-screen-off", StringComparison.OrdinalIgnoreCase) >= 0)
                             continue;
 
                         int processId = Convert.ToInt32((uint)item["ProcessId"]);
