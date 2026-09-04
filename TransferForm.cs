@@ -32,13 +32,13 @@ namespace OPhoneMirror
 
     internal sealed class TransferForm : Form
     {
-        private readonly Color page = Color.FromArgb(244, 247, 252);
-        private readonly Color panelColor = Color.White;
-        private readonly Color border = Color.FromArgb(216, 222, 232);
-        private readonly Color text = Color.FromArgb(28, 35, 48);
-        private readonly Color muted = Color.FromArgb(107, 117, 136);
-        private readonly Color accent = Color.FromArgb(55, 116, 242);
-        private readonly Color success = Color.FromArgb(20, 165, 105);
+        private readonly Color page = UiTheme.Background;
+        private readonly Color panelColor = UiTheme.Surface;
+        private readonly Color border = UiTheme.Border;
+        private readonly Color text = UiTheme.Text;
+        private readonly Color muted = UiTheme.TextMuted;
+        private readonly Color accent = UiTheme.Accent;
+        private readonly Color success = UiTheme.Success;
 
         private readonly string deviceName;
         private readonly AdbClient adb;
@@ -87,7 +87,8 @@ namespace OPhoneMirror
 
             Label title = new Label();
             title.Text = "文件互传";
-            title.Font = new Font("Microsoft YaHei UI", 18F, FontStyle.Bold);
+            title.Font = new Font("Microsoft YaHei UI", 20F, FontStyle.Bold);
+            title.ForeColor = text;
             title.AutoSize = true;
             title.Location = new Point(20, 18);
             Controls.Add(title);
@@ -95,17 +96,17 @@ namespace OPhoneMirror
             Label device = new Label();
             device.Text = "USB · " + deviceName;
             device.ForeColor = success;
-            device.BackColor = Color.FromArgb(222, 247, 237);
+            device.BackColor = Color.FromArgb(25, 65, 58);
             device.AutoSize = true;
             device.Padding = new Padding(8, 4, 8, 4);
             device.Location = new Point(190, 22);
             Controls.Add(device);
 
-            sendButton = MakeTransferButton("发送到手机  →");
+            sendButton = MakeTransferButton("发送到手机");
             sendButton.Click += delegate { StartTransfer(true); };
             Controls.Add(sendButton);
 
-            receiveButton = MakeTransferButton("←  保存到电脑");
+            receiveButton = MakeTransferButton("保存到电脑");
             receiveButton.Click += delegate { StartTransfer(false); };
             Controls.Add(receiveButton);
 
@@ -141,10 +142,10 @@ namespace OPhoneMirror
             BuildLocalPane();
             BuildRemotePane();
 
-            Panel taskPanel = new Panel();
+            RoundedPanel taskPanel = new RoundedPanel();
             taskPanel.Name = "taskPanel";
             taskPanel.BackColor = panelColor;
-            taskPanel.BorderStyle = BorderStyle.FixedSingle;
+            taskPanel.BorderColor = border;
             Controls.Add(taskPanel);
 
             Label taskTitle = new Label();
@@ -190,12 +191,13 @@ namespace OPhoneMirror
 
         private void BuildLocalPane()
         {
-            Label heading = MakePaneHeading("本机电脑", "选择源文件或接收目录");
+            Label heading = MakePaneHeading("这台电脑");
             localPanel.Controls.Add(heading);
+            localPanel.Controls.Add(MakePaneCaption("选择源文件，或选择文件的接收目录"));
             localPanel.Controls.Add(localPathBox);
 
-            Button up = MakeToolbarButton("↑ 上级");
-            up.Location = new Point(14, 80);
+            Button up = MakeToolbarButton("上一级");
+            up.Location = new Point(14, 110);
             up.Click += delegate
             {
                 DirectoryInfo parent = Directory.GetParent(localPath);
@@ -204,68 +206,69 @@ namespace OPhoneMirror
             };
             localPanel.Controls.Add(up);
 
-            Button refresh = MakeToolbarButton("↻ 刷新");
-            refresh.Location = new Point(100, 80);
+            Button refresh = MakeToolbarButton("刷新");
+            refresh.Location = new Point(100, 110);
             refresh.Click += delegate { RefreshLocal(); };
             localPanel.Controls.Add(refresh);
 
             Button browse = MakeToolbarButton("浏览…");
-            browse.Location = new Point(186, 80);
+            browse.Location = new Point(186, 110);
             browse.Click += BrowseLocal;
             localPanel.Controls.Add(browse);
 
-            Button newFolder = MakeToolbarButton("＋ 新建");
-            newFolder.Location = new Point(272, 80);
-            newFolder.Size = new Size(82, 30);
+            Button newFolder = MakeToolbarButton("新建文件夹");
+            newFolder.Location = new Point(272, 110);
+            newFolder.Size = new Size(104, 30);
             newFolder.Click += CreateLocalFolder;
             localPanel.Controls.Add(newFolder);
 
-            localGrid.Location = new Point(14, 120);
+            localGrid.Location = new Point(14, 150);
             localPanel.Controls.Add(localGrid);
         }
 
         private void BuildRemotePane()
         {
-            Label heading = MakePaneHeading(deviceName, "手机共享存储");
+            Label heading = MakePaneHeading(deviceName);
             remotePanel.Controls.Add(heading);
+            remotePanel.Controls.Add(MakePaneCaption("手机共享存储，可直接前往下载或相册目录"));
             remotePanel.Controls.Add(remotePathBox);
 
-            Button up = MakeToolbarButton("↑ 上级");
-            up.Location = new Point(14, 80);
+            Button up = MakeToolbarButton("上一级");
+            up.Location = new Point(14, 110);
             up.Click += delegate { NavigateRemote(AdbClient.RemoteParent(remotePath)); };
             remotePanel.Controls.Add(up);
 
-            Button refresh = MakeToolbarButton("↻ 刷新");
-            refresh.Location = new Point(100, 80);
+            Button refresh = MakeToolbarButton("刷新");
+            refresh.Location = new Point(100, 110);
             refresh.Click += delegate { RefreshRemote(); };
             remotePanel.Controls.Add(refresh);
 
             Button downloads = MakeToolbarButton("Download");
-            downloads.Location = new Point(186, 80);
-            downloads.Size = new Size(100, 30);
+            downloads.Location = new Point(186, 110);
+            downloads.Size = new Size(92, 30);
             downloads.Click += delegate { NavigateRemote("/sdcard/Download"); };
             remotePanel.Controls.Add(downloads);
 
-            Button newFolder = MakeToolbarButton("＋ 新建");
-            newFolder.Location = new Point(294, 80);
-            newFolder.Size = new Size(82, 30);
+            Button newFolder = MakeToolbarButton("新建文件夹");
+            newFolder.Location = new Point(286, 110);
+            newFolder.Size = new Size(96, 30);
             newFolder.Click += CreateRemoteFolder;
             remotePanel.Controls.Add(newFolder);
 
             Button dcim = MakeToolbarButton("DCIM");
-            dcim.Location = new Point(384, 80);
-            dcim.Size = new Size(70, 30);
+            dcim.Location = new Point(390, 110);
+            dcim.Size = new Size(62, 30);
             dcim.Click += delegate { NavigateRemote("/sdcard/DCIM"); };
             remotePanel.Controls.Add(dcim);
 
             remoteMoreButton = MakeToolbarButton("更多");
-            remoteMoreButton.Location = new Point(462, 80);
-            remoteMoreButton.Size = new Size(70, 30);
+            remoteMoreButton.Location = new Point(460, 110);
+            remoteMoreButton.Size = new Size(62, 30);
             remoteMoreButton.Enabled = false;
             remoteMoreButton.Click += delegate { AddRemoteBatch(); };
             remotePanel.Controls.Add(remoteMoreButton);
 
-            remoteGrid.Location = new Point(14, 120);
+            remoteGrid.Location = new Point(14, 150);
             remotePanel.Controls.Add(remoteGrid);
         }
 
@@ -273,17 +276,17 @@ namespace OPhoneMirror
         {
             int margin = 20;
             int gap = 18;
-            int paneTop = 72;
+            int paneTop = 76;
             int paneHeight = Math.Max(310, (ClientSize.Height - 150) * 57 / 100);
             int paneWidth = (ClientSize.Width - margin * 2 - gap) / 2;
 
             localPanel.SetBounds(margin, paneTop, paneWidth, paneHeight);
             remotePanel.SetBounds(margin + paneWidth + gap, paneTop, paneWidth, paneHeight);
 
-            localPathBox.SetBounds(14, 44, paneWidth - 28, 28);
-            remotePathBox.SetBounds(14, 44, paneWidth - 28, 28);
-            localGrid.Size = new Size(paneWidth - 28, paneHeight - 134);
-            remoteGrid.Size = new Size(paneWidth - 28, paneHeight - 134);
+            localPathBox.SetBounds(14, 70, paneWidth - 28, 30);
+            remotePathBox.SetBounds(14, 70, paneWidth - 28, 30);
+            localGrid.Size = new Size(paneWidth - 28, paneHeight - 164);
+            remoteGrid.Size = new Size(paneWidth - 28, paneHeight - 164);
 
             int center = ClientSize.Width / 2;
             sendButton.SetBounds(center - 238, 18, 170, 38);
@@ -304,20 +307,31 @@ namespace OPhoneMirror
 
         private Panel MakePane()
         {
-            Panel panel = new Panel();
+            RoundedPanel panel = new RoundedPanel();
             panel.BackColor = panelColor;
-            panel.BorderStyle = BorderStyle.FixedSingle;
+            panel.BorderColor = border;
             return panel;
         }
 
-        private Label MakePaneHeading(string heading, string caption)
+        private Label MakePaneHeading(string heading)
         {
             Label label = new Label();
-            label.Text = heading + "    " + caption;
-            label.Font = new Font("Microsoft YaHei UI", 11F, FontStyle.Bold);
+            label.Text = heading;
+            label.Font = new Font("Microsoft YaHei UI", 12F, FontStyle.Bold);
             label.ForeColor = text;
             label.AutoSize = true;
             label.Location = new Point(14, 12);
+            return label;
+        }
+
+        private Label MakePaneCaption(string caption)
+        {
+            Label label = new Label();
+            label.Text = caption;
+            label.Font = new Font("Microsoft YaHei UI", 8.5F);
+            label.ForeColor = muted;
+            label.AutoSize = true;
+            label.Location = new Point(15, 42);
             return label;
         }
 
@@ -326,17 +340,18 @@ namespace OPhoneMirror
             TextBox box = new TextBox();
             box.BorderStyle = BorderStyle.FixedSingle;
             box.Font = new Font("Consolas", 10F);
+            box.BackColor = UiTheme.SurfaceMuted;
+            box.ForeColor = text;
             return box;
         }
 
         private Button MakeTransferButton(string caption)
         {
-            Button button = new Button();
+            ModernButton button = new ModernButton();
             button.Text = caption;
+            button.Kind = UiButtonKind.Primary;
             button.BackColor = accent;
             button.ForeColor = Color.White;
-            button.FlatStyle = FlatStyle.Flat;
-            button.FlatAppearance.BorderSize = 0;
             button.Font = new Font("Microsoft YaHei UI", 10F, FontStyle.Bold);
             button.Cursor = Cursors.Hand;
             return button;
@@ -344,13 +359,12 @@ namespace OPhoneMirror
 
         private Button MakeToolbarButton(string caption)
         {
-            Button button = new Button();
+            ModernButton button = new ModernButton();
             button.Text = caption;
+            button.Kind = UiButtonKind.Secondary;
             button.Size = new Size(78, 30);
-            button.BackColor = Color.White;
+            button.BackColor = panelColor;
             button.ForeColor = text;
-            button.FlatStyle = FlatStyle.Flat;
-            button.FlatAppearance.BorderColor = border;
             button.Cursor = Cursors.Hand;
             return button;
         }
@@ -361,20 +375,24 @@ namespace OPhoneMirror
             grid.AllowUserToAddRows = false;
             grid.AllowUserToDeleteRows = false;
             grid.AllowUserToResizeRows = false;
-            grid.BackgroundColor = Color.White;
-            grid.BorderStyle = BorderStyle.FixedSingle;
+            grid.BackgroundColor = UiTheme.Surface;
+            grid.BorderStyle = BorderStyle.None;
             grid.CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal;
-            grid.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single;
-            grid.ColumnHeadersHeight = 36;
+            grid.GridColor = UiTheme.Border;
+            grid.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.None;
+            grid.ColumnHeadersHeight = 38;
             grid.EnableHeadersVisualStyles = false;
-            grid.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(247, 249, 252);
+            grid.ColumnHeadersDefaultCellStyle.BackColor = UiTheme.SurfaceRaised;
             grid.ColumnHeadersDefaultCellStyle.ForeColor = text;
-            grid.ColumnHeadersDefaultCellStyle.Font = new Font("Microsoft YaHei UI", 9F);
-            grid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(226, 235, 255);
-            grid.DefaultCellStyle.SelectionForeColor = text;
-            grid.DefaultCellStyle.Padding = new Padding(3);
+            grid.ColumnHeadersDefaultCellStyle.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
+            grid.ColumnHeadersDefaultCellStyle.SelectionBackColor = UiTheme.SurfaceRaised;
+            grid.DefaultCellStyle.BackColor = UiTheme.Surface;
+            grid.DefaultCellStyle.ForeColor = text;
+            grid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(48, 73, 119);
+            grid.DefaultCellStyle.SelectionForeColor = Color.White;
+            grid.DefaultCellStyle.Padding = new Padding(5, 2, 5, 2);
             grid.RowHeadersVisible = false;
-            grid.RowTemplate.Height = 34;
+            grid.RowTemplate.Height = 36;
             grid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
             grid.MultiSelect = true;
             grid.AutoGenerateColumns = false;
@@ -415,12 +433,20 @@ namespace OPhoneMirror
             grid.AllowUserToAddRows = false;
             grid.AllowUserToDeleteRows = false;
             grid.AllowUserToResizeRows = false;
-            grid.BackgroundColor = Color.White;
+            grid.BackgroundColor = UiTheme.Surface;
             grid.BorderStyle = BorderStyle.None;
             grid.CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal;
-            grid.ColumnHeadersHeight = 32;
+            grid.GridColor = UiTheme.Border;
+            grid.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.None;
+            grid.ColumnHeadersHeight = 34;
             grid.EnableHeadersVisualStyles = false;
-            grid.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(247, 249, 252);
+            grid.ColumnHeadersDefaultCellStyle.BackColor = UiTheme.SurfaceRaised;
+            grid.ColumnHeadersDefaultCellStyle.ForeColor = text;
+            grid.ColumnHeadersDefaultCellStyle.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
+            grid.DefaultCellStyle.BackColor = UiTheme.Surface;
+            grid.DefaultCellStyle.ForeColor = text;
+            grid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(48, 73, 119);
+            grid.DefaultCellStyle.SelectionForeColor = Color.White;
             grid.RowHeadersVisible = false;
             grid.RowTemplate.Height = 30;
             grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
@@ -614,7 +640,7 @@ namespace OPhoneMirror
                 FileEntry entry = entries[index];
                 int rowIndex = grid.Rows.Add(
                     false,
-                    (entry.IsDirectory ? "📁  " : "") + entry.Name,
+                    entry.Name,
                     entry.Modified.ToString("yyyy-MM-dd HH:mm"),
                     entry.IsDirectory ? "文件夹" : FileType(entry.Name),
                     entry.IsDirectory ? "--" : FormatSize(entry.Size));
@@ -819,7 +845,7 @@ namespace OPhoneMirror
                         job.Overwrite);
                 SetJobStatus(
                     job,
-                    job.Result.Success ? "✓ 已完成" : "失败",
+                    job.Result.Success ? "已完成" : "失败",
                     job.Result.Message);
             }
             e.Result = jobs;
@@ -894,17 +920,31 @@ namespace OPhoneMirror
                 form.MaximizeBox = false;
                 form.ClientSize = new Size(390, 142);
                 form.Font = new Font("Microsoft YaHei UI", 9F);
+                form.BackColor = UiTheme.Background;
+                form.ForeColor = UiTheme.Text;
 
                 label.Text = prompt;
+                label.ForeColor = UiTheme.Text;
                 label.AutoSize = true;
                 label.Location = new Point(18, 18);
                 input.SetBounds(18, 45, 354, 28);
+                input.BackColor = UiTheme.SurfaceMuted;
+                input.ForeColor = UiTheme.Text;
+                input.BorderStyle = BorderStyle.FixedSingle;
                 ok.Text = "确定";
                 ok.DialogResult = DialogResult.OK;
                 ok.SetBounds(208, 92, 78, 32);
+                ok.FlatStyle = FlatStyle.Flat;
+                ok.BackColor = UiTheme.Accent;
+                ok.ForeColor = Color.White;
+                ok.FlatAppearance.BorderSize = 0;
                 cancel.Text = "取消";
                 cancel.DialogResult = DialogResult.Cancel;
                 cancel.SetBounds(294, 92, 78, 32);
+                cancel.FlatStyle = FlatStyle.Flat;
+                cancel.BackColor = UiTheme.Surface;
+                cancel.ForeColor = UiTheme.Text;
+                cancel.FlatAppearance.BorderColor = UiTheme.Border;
 
                 form.Controls.AddRange(new Control[] { label, input, ok, cancel });
                 form.AcceptButton = ok;

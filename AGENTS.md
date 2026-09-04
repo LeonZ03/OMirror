@@ -6,14 +6,14 @@ This file is the compact source of truth for AI agents working in this repositor
 
 - Name: `OPhoneMirror`.
 - Platform: Windows desktop, WinForms on .NET Framework.
-- Current UI version: `1.8.13`; bundled runtime expected: scrcpy `4.1` with ADB `37.0.1`.
+- Current UI version: `1.9.0`; bundled runtime expected: scrcpy `4.1` with ADB `37.0.1`.
 - There is intentionally no `.csproj`: `build.ps1` invokes the .NET Framework `csc.exe` directly.
 - Repository source is self-contained. `dist/` and `devices.local.txt` are local-only and ignored.
 
 ## Source map
 
-- `OPhoneMirror.cs`: main device cards, USB status, scrcpy launch/restart, keyboard mode persistence, and mode normalization.
-- `TransferForm.cs`: two-pane PC/Android file browser, selection, transfer queue, collision confirmation, and large-directory batching.
+- `OPhoneMirror.cs`: shared dark UI tokens/controls, main device cards, USB status, scrcpy launch/restart, keyboard mode persistence, and mode normalization.
+- `TransferForm.cs`: matching dark two-pane PC/Android file browser, selection, transfer queue, collision confirmation, and large-directory batching.
 - `AdbClient.cs`: quoted ADB execution, UTF-8 shell input, Unicode-safe file transfer, and tar-stream directory receive.
 - `KeyboardCapture.cs`: low-level Windows keyboard hook active only when a tracked scrcpy window owns foreground focus.
 - `app.manifest`: `asInvoker`; do not elevate, because Windows blocks Explorer drag/drop into elevated windows.
@@ -44,6 +44,7 @@ Keyboard, screen-off, and always-on-top settings live under `%LOCALAPPDATA%\OPho
   - Short-phrase mode uses scrcpy default SDK keyboard and adds no `--keyboard`, `--raw-key-events`, or `--prefer-text` flag.
   - Numeric-candidate mode adds only `--keyboard=uhid`.
 - Mode changes find matching `scrcpy.exe` processes through WMI, close them, wait about 700 ms, and restart them with the selected backend.
+- The two keyboard backends are presented as one keyboard-accessible segmented selector; changing it still uses the existing hot-restart path.
 - Per-device last backend is persisted. A delayed `KEYCODE_SHIFT_LEFT` is sent only for a confirmed UHID→SDK transition; never send it on unknown first-run state.
 - Clipboard synchronization is scrcpy's default. Do not add `--no-clipboard-autosync`.
 - Foreground-only keyboard mapping:
