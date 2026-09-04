@@ -13,6 +13,9 @@ namespace OPhoneMirror
         private const int VkTab = 0x09;
         private const int VkEscape = 0x1B;
         private const int VkControl = 0x11;
+        private const int VkShift = 0x10;
+        private const int VkLShift = 0xA0;
+        private const int VkRShift = 0xA1;
         private const int VkLWin = 0x5B;
         private const int VkRWin = 0x5C;
         private const int LlkhfAltDown = 0x20;
@@ -23,6 +26,8 @@ namespace OPhoneMirror
         private bool tabSuppressed;
         private bool winHeld;
         private bool ctrlEscapeSuppressed;
+        private bool leftShiftHeld;
+        private bool rightShiftHeld;
 
         public KeyboardCapture(MainForm owner)
         {
@@ -50,6 +55,32 @@ namespace OPhoneMirror
                 if (device != null)
                 {
                     bool altDown = (flags & LlkhfAltDown) != 0;
+
+                    // Windows handles a bare Shift as an input-language shortcut.
+                    // While scrcpy owns focus, consume it before Windows sees it and
+                    // send the corresponding Android Shift event instead. The phone
+                    // input method therefore remains the only recipient.
+                    if (virtualKey == VkShift || virtualKey == VkLShift || virtualKey == VkRShift)
+                    {
+                        bool rightShift = virtualKey == VkRShift;
+                        bool alreadyHeld = rightShift ? rightShiftHeld : leftShiftHeld;
+                        if (keyDown && !alreadyHeld)
+                        {
+                            if (rightShift)
+                                rightShiftHeld = true;
+                            else
+                                leftShiftHeld = true;
+                            owner.SendAndroidKeyAsync(device, rightShift ? 60 : 59);
+                        }
+                        else if (keyUp)
+                        {
+                            if (rightShift)
+                                rightShiftHeld = false;
+                            else
+                                leftShiftHeld = false;
+                        }
+                        return new IntPtr(1);
+                    }
 
                     if (virtualKey == VkTab && (altDown || tabSuppressed))
                     {
@@ -99,6 +130,8 @@ namespace OPhoneMirror
                     tabSuppressed = false;
                     winHeld = false;
                     ctrlEscapeSuppressed = false;
+                    leftShiftHeld = false;
+                    rightShiftHeld = false;
                 }
             }
 
