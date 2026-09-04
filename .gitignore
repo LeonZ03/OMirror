@@ -1,5 +1,6 @@
 # Build outputs and bundled third-party binaries
 /dist/
+/.artifacts/
 
 # Per-machine device identifiers (never commit)
 /devices.local.txt

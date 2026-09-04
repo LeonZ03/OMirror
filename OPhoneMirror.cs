@@ -12,8 +12,8 @@ using System.Windows.Forms;
 
 [assembly: AssemblyTitle("OPhoneMirror")]
 [assembly: AssemblyProduct("OPhoneMirror")]
-[assembly: AssemblyVersion("1.12.1.0")]
-[assembly: AssemblyFileVersion("1.12.1.0")]
+[assembly: AssemblyVersion("1.13.0.0")]
+[assembly: AssemblyFileVersion("1.13.0.0")]
 
 namespace OPhoneMirror
 {
@@ -30,6 +30,15 @@ namespace OPhoneMirror
         Auto,
         Light,
         Dark
+    }
+
+    internal enum MirrorSessionState
+    {
+        Stopped,
+        Starting,
+        Running,
+        Stopping,
+        Recovering
     }
 
     internal sealed class ThemePalette
@@ -1337,7 +1346,14 @@ namespace OPhoneMirror
         public int MirrorProcessId;
         public bool MirrorStarting;
         public bool MirrorStopping;
+        public MirrorSessionState SessionState;
+        public int SessionGeneration;
+        public int RecoveryRequestId;
+        public int RecoveryAttempts;
+        public bool StopRequested;
+        public DateTime RunningSinceUtc;
         public int ScreenPowerRequestId;
+        public bool ScreenDesiredOff;
         public bool ScreenOffApplied;
         public int TopMostRequestId;
     }
@@ -1407,8 +1423,6 @@ namespace OPhoneMirror
 
     internal sealed class DevicePickerForm : Form
     {
-        public int LastDismissedTick;
-
         public DevicePickerForm()
         {
             FormBorderStyle = FormBorderStyle.None;
@@ -1417,11 +1431,6 @@ namespace OPhoneMirror
             BackColor = UiTheme.Surface;
             ClientSize = new Size(532, 128);
             KeyPreview = true;
-            Deactivate += delegate
-            {
-                LastDismissedTick = Environment.TickCount;
-                Hide();
-            };
             KeyDown += delegate(object sender, KeyEventArgs e)
             {
                 if (e.KeyCode == Keys.Escape)
@@ -1439,8 +1448,14 @@ namespace OPhoneMirror
             {
                 CreateParams parameters = base.CreateParams;
                 parameters.ClassStyle |= 0x00020000;
+                parameters.ExStyle |= 0x08000000 | 0x00000080;
                 return parameters;
             }
+        }
+
+        protected override bool ShowWithoutActivation
+        {
+            get { return true; }
         }
 
         protected override void OnResize(EventArgs e)
@@ -1469,7 +1484,6 @@ namespace OPhoneMirror
             WindowTheme.Apply(this);
             Show(owner);
             BringToFront();
-            Activate();
         }
     }
 
@@ -1498,6 +1512,7 @@ namespace OPhoneMirror
         private readonly DeviceSelectRow device1Row;
         private readonly DeviceSelectRow device2Row;
         private readonly DevicePickerForm devicePicker;
+        private readonly PickerDismissFilter pickerDismissFilter;
         private readonly RoundedPanel settingsPanel;
         private readonly ModernButton launchButton;
         private readonly ModernButton transferButton;
@@ -1512,6 +1527,8 @@ namespace OPhoneMirror
         private int keyboardMode;
         private AppThemeMode themeMode;
         private int refreshInProgress;
+        private string lastAdbProbeDetail = string.Empty;
+        private static readonly object screenPowerInputGate = new object();
 
         public MainForm()
         {
@@ -1710,6 +1727,8 @@ namespace OPhoneMirror
 
             devicePicker = new DevicePickerForm();
             devicePicker.Size = new Size(532, 128);
+            pickerDismissFilter = new PickerDismissFilter(this);
+            Application.AddMessageFilter(pickerDismissFilter);
 
             device1Row = new DeviceSelectRow();
             device1Row.Device = device1;
@@ -1736,7 +1755,7 @@ namespace OPhoneMirror
             Controls.Add(footerStatus);
 
             Label version = new Label();
-            version.Text = "v1.12.1";
+            version.Text = "v1.13.0";
             version.ForeColor = muted;
             version.AutoSize = false;
             version.Location = new Point(512, 488);
@@ -1762,6 +1781,7 @@ namespace OPhoneMirror
                 Microsoft.Win32.SystemEvents.UserPreferenceChanged -= SystemThemeChanged;
                 devicePicker.Close();
                 devicePicker.Dispose();
+                Application.RemoveMessageFilter(pickerDismissFilter);
                 keyboardCapture.Dispose();
                 toolTip.Dispose();
             };
@@ -1772,11 +1792,18 @@ namespace OPhoneMirror
                 AdoptExistingMirrorsAsync();
                 refreshTimer.Start();
             };
+            Deactivate += delegate { CloseDeviceList(); };
             KeyDown += delegate(object sender, KeyEventArgs e)
             {
                 if (e.KeyCode == Keys.Escape && devicePicker.Visible)
                 {
                     CloseDeviceList();
+                    e.Handled = true;
+                    e.SuppressKeyPress = true;
+                }
+                else if (devicePicker.Visible && (e.KeyCode == Keys.Up || e.KeyCode == Keys.Down))
+                {
+                    SelectDevice(activeDevice == device1 ? device2 : device1);
                     e.Handled = true;
                     e.SuppressKeyPress = true;
                 }
@@ -1861,6 +1888,89 @@ namespace OPhoneMirror
             return device;
         }
 
+        internal bool StressScreenOffSetting { get { return screenOffToggle.Checked; } }
+        internal bool StressTopMostSetting { get { return alwaysOnTopToggle.Checked; } }
+        internal int StressKeyboardSetting { get { return keyboardMode; } }
+        internal int StressActiveDeviceIndex { get { return activeDevice == device2 ? 1 : 0; } }
+
+        internal bool StressPrepare(int deviceIndex)
+        {
+            DeviceCard requested = deviceIndex == 1 ? device2 : device1;
+            SelectDevice(requested);
+            RefreshDevices();
+            bool online = false;
+            for (int attempt = 0; attempt < 5 && !online; attempt++)
+            {
+                online = IsUsbDeviceOnline(requested.Serial);
+                if (!online)
+                    System.Threading.Thread.Sleep(500);
+            }
+            requested.IsOnline = online;
+            Diagnostics.Trace("stress", "prepare", "configured=" + HasConfiguredDevices + " online=" + online + " detail=" + lastAdbProbeDetail);
+            return online;
+        }
+
+        internal bool StressMirrorIsRunning()
+        {
+            return activeDevice.MirrorActive || FindMirrorProcesses(activeDevice).Count > 0;
+        }
+
+        internal int StressMirrorProcessCount()
+        {
+            return FindMirrorProcesses(activeDevice).Count;
+        }
+
+        internal void StressStartOrStopMirror()
+        {
+            ToggleMirror(activeDevice);
+        }
+
+        internal void StressToggleScreenPower()
+        {
+            screenOffToggle.Checked = !screenOffToggle.Checked;
+        }
+
+        internal void StressTogglePicker()
+        {
+            if (devicePicker.Visible)
+                CloseDeviceList();
+            else
+                ToggleDeviceList();
+        }
+
+        internal void StressClosePicker()
+        {
+            CloseDeviceList();
+        }
+
+        internal void StressToggleKeyboardMode()
+        {
+            keyboardModeSelector.SelectedIndex = keyboardMode == 0 ? 1 : 0;
+        }
+
+        internal void StressToggleTopMost()
+        {
+            alwaysOnTopToggle.Checked = !alwaysOnTopToggle.Checked;
+        }
+
+        internal void StressNavigatePhone(int keyCode)
+        {
+            DeviceCard target = activeDevice;
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                new AdbClient(adbPath, target.Serial).Shell("input keyevent " + keyCode, 5000);
+            });
+        }
+
+        internal void StressRestore(bool screenOff, bool topMost, int keyboard, int deviceIndex)
+        {
+            screenOffToggle.Checked = screenOff;
+            alwaysOnTopToggle.Checked = topMost;
+            if (keyboardModeSelector.SelectedIndex != keyboard)
+                keyboardModeSelector.SelectedIndex = keyboard;
+            SelectDevice(deviceIndex == 1 ? device2 : device1);
+        }
+
         private ModernButton MakeIconButton(UiIcon icon, string accessibleName, UiButtonKind kind)
         {
             ModernButton b = new ModernButton();
@@ -1889,9 +1999,6 @@ namespace OPhoneMirror
 
         private void ToggleDeviceList()
         {
-            int sinceDismissed = unchecked(Environment.TickCount - devicePicker.LastDismissedTick);
-            if (!devicePicker.Visible && sinceDismissed >= 0 && sinceDismissed < 250)
-                return;
             if (devicePicker.Visible)
             {
                 CloseDeviceList();
@@ -1901,7 +2008,6 @@ namespace OPhoneMirror
                 (activeDevice.IsOnline ? "USB 已连接" : "未连接") + "，" +
                 "设备列表已展开";
             devicePicker.ShowFor(activeDeviceRow, this);
-            (activeDevice == device1 ? device1Row : device2Row).Focus();
         }
 
         private void CloseDeviceList()
@@ -1927,6 +2033,46 @@ namespace OPhoneMirror
             devicePicker.Hide();
             footerStatus.Text = DeviceStatusText(device);
             activeDeviceRow.Focus();
+        }
+
+        // The picker deliberately never activates, so it cannot make the main panel
+        // lose focus. This filter supplies the missing "click elsewhere closes it"
+        // behavior without stealing focus from the owner window.
+        private sealed class PickerDismissFilter : IMessageFilter
+        {
+            private const int WmLButtonDown = 0x0201;
+            private const int WmNCLButtonDown = 0x00A1;
+            private readonly MainForm owner;
+
+            public PickerDismissFilter(MainForm owner)
+            {
+                this.owner = owner;
+            }
+
+            public bool PreFilterMessage(ref Message message)
+            {
+                if (!owner.devicePicker.Visible ||
+                    (message.Msg != WmLButtonDown && message.Msg != WmNCLButtonDown))
+                    return false;
+
+                Control clicked = Control.FromHandle(message.HWnd);
+                if (!IsWithin(clicked, owner.devicePicker))
+                {
+                    try { owner.BeginInvoke((MethodInvoker)owner.CloseDeviceList); }
+                    catch { }
+                }
+                return false;
+            }
+
+            private static bool IsWithin(Control control, Control root)
+            {
+                for (Control current = control; current != null; current = current.Parent)
+                {
+                    if (current == root)
+                        return true;
+                }
+                return false;
+            }
         }
 
         private int LoadSelectedDeviceIndex()
@@ -2078,16 +2224,22 @@ namespace OPhoneMirror
                 psi.RedirectStandardOutput = true;
                 psi.RedirectStandardError = true;
                 Process p = Process.Start(psi);
-                if (!p.WaitForExit(1200))
+                // The first query after an ADB-server restart can take longer than a
+                // normal refresh. Do not classify an otherwise connected phone as
+                // absent just because its server is warming up.
+                if (!p.WaitForExit(5000))
                 {
                     p.Kill();
                     return false;
                 }
                 string output = p.StandardOutput.ReadToEnd().Trim();
+                string error = p.StandardError.ReadToEnd().Trim();
+                lastAdbProbeDetail = "exit=" + p.ExitCode + " output=" + output + " error=" + error;
                 return p.ExitCode == 0 && output == "device";
             }
-            catch
+            catch (Exception ex)
             {
+                lastAdbProbeDetail = ex.GetType().Name;
                 return false;
             }
         }
@@ -2197,6 +2349,9 @@ namespace OPhoneMirror
         {
             device.MirrorStarting = false;
             device.MirrorStopping = true;
+            device.SessionState = MirrorSessionState.Stopping;
+            device.StopRequested = true;
+            Diagnostics.Trace(device.Name, "mirror-stop-requested", "manual");
             UpdateMirrorAction(device);
             footerStatus.Text = device.Name + " 正在停止投屏…";
             StopScreenControl(device, true);
@@ -2217,6 +2372,7 @@ namespace OPhoneMirror
                         device.MirrorProcessId = 0;
                         device.MirrorActive = false;
                         device.MirrorStopping = false;
+                        device.SessionState = MirrorSessionState.Stopped;
                         UpdateMirrorAction(device);
                         footerStatus.Text = device.Name + " 投屏已停止";
                     });
@@ -2227,45 +2383,67 @@ namespace OPhoneMirror
 
         private void AttachMirrorProcess(DeviceCard device, Process process, bool alreadyRunning)
         {
+            int sessionGeneration = ++device.SessionGeneration;
             device.MirrorProcess = process;
             device.MirrorProcessId = process.Id;
             device.MirrorStarting = !alreadyRunning;
             device.MirrorStopping = false;
             device.MirrorActive = alreadyRunning;
+            device.SessionState = alreadyRunning ? MirrorSessionState.Running : MirrorSessionState.Starting;
+            device.StopRequested = false;
+            Diagnostics.Trace(device.Name, "mirror-attached",
+                "pid=" + process.Id + " generation=" + sessionGeneration +
+                " adopted=" + alreadyRunning);
             try
             {
                 process.EnableRaisingEvents = true;
                 int processId = process.Id;
-                process.Exited += delegate { MirrorProcessExited(device, processId); };
+                process.Exited += delegate { MirrorProcessExited(device, processId, sessionGeneration); };
             }
             catch { }
             UpdateMirrorAction(device);
         }
 
-        private void MirrorProcessExited(DeviceCard device, int processId)
+        private void MirrorProcessExited(DeviceCard device, int processId, int sessionGeneration)
         {
             if (IsDisposed)
                 return;
+            int exitCode = -1;
+            try { exitCode = device.MirrorProcess == null ? -1 : device.MirrorProcess.ExitCode; }
+            catch { }
             try
             {
                 BeginInvoke((MethodInvoker)delegate
                 {
-                    if (device.MirrorProcessId != processId)
+                    if (device.MirrorProcessId != processId || device.SessionGeneration != sessionGeneration)
                         return;
+                    bool expected = device.StopRequested || device.MirrorStopping ||
+                        device.SessionState == MirrorSessionState.Stopping;
+                    Diagnostics.Trace(device.Name, "mirror-exited",
+                        "pid=" + processId + " code=" + exitCode + " expected=" + expected);
                     device.MirrorProcess = null;
                     device.MirrorProcessId = 0;
                     device.MirrorActive = false;
                     device.MirrorStarting = false;
                     device.MirrorStopping = false;
                     device.ScreenOffApplied = false;
-                    UpdateMirrorAction(device);
-                    footerStatus.Text = device.Name + " 投屏已结束";
+                    if (expected || exitCode == 0)
+                    {
+                        device.SessionState = MirrorSessionState.Stopped;
+                        device.StopRequested = false;
+                        UpdateMirrorAction(device);
+                        footerStatus.Text = device.Name + " 投屏已结束";
+                        return;
+                    }
+
+                    Diagnostics.FlushUnexpectedExit(device.Name, device.Serial, exitCode);
+                    ScheduleRecovery(device, sessionGeneration, exitCode);
                 });
             }
             catch { }
         }
 
-        private void WatchMirrorStarted(DeviceCard device, Process process)
+        private void WatchMirrorStarted(DeviceCard device, Process process, int sessionGeneration)
         {
             System.Threading.ThreadPool.QueueUserWorkItem(delegate
             {
@@ -2292,12 +2470,87 @@ namespace OPhoneMirror
                 {
                     BeginInvoke((MethodInvoker)delegate
                     {
-                        if (device.MirrorProcessId != process.Id)
+                        if (device.MirrorProcessId != process.Id ||
+                            device.SessionGeneration != sessionGeneration || device.StopRequested)
                             return;
                         device.MirrorStarting = false;
                         device.MirrorActive = true;
+                        device.SessionState = MirrorSessionState.Running;
+                        device.RunningSinceUtc = DateTime.UtcNow;
                         UpdateMirrorAction(device);
                         footerStatus.Text = device.Name + " 正在投屏 · " + KeyboardModeName();
+                        ResetRecoveryAfterStableRun(device, sessionGeneration);
+                    });
+                }
+                catch { }
+            });
+        }
+
+        private void ResetRecoveryAfterStableRun(DeviceCard device, int sessionGeneration)
+        {
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                System.Threading.Thread.Sleep(30000);
+                if (IsDisposed)
+                    return;
+                try
+                {
+                    BeginInvoke((MethodInvoker)delegate
+                    {
+                        if (device.SessionGeneration == sessionGeneration &&
+                            device.SessionState == MirrorSessionState.Running)
+                        {
+                            device.RecoveryAttempts = 0;
+                            Diagnostics.Trace(device.Name, "recovery-budget-reset", "stable-30s");
+                        }
+                    });
+                }
+                catch { }
+            });
+        }
+
+        private void ScheduleRecovery(DeviceCard device, int exitedGeneration, int exitCode)
+        {
+            if (device.RecoveryAttempts >= 2)
+            {
+                device.SessionState = MirrorSessionState.Stopped;
+                device.StopRequested = false;
+                UpdateMirrorAction(device);
+                footerStatus.Text = device.Name + " 投屏已断开；已停止自动重连";
+                Diagnostics.Trace(device.Name, "recovery-exhausted", "code=" + exitCode);
+                return;
+            }
+
+            int attempt = ++device.RecoveryAttempts;
+            int requestId = ++device.RecoveryRequestId;
+            int delay = attempt == 1 ? 750 : 2000;
+            device.SessionState = MirrorSessionState.Recovering;
+            device.MirrorStarting = true;
+            device.MirrorStopping = false;
+            UpdateMirrorAction(device);
+            footerStatus.Text = device.Name + " 连接中；正在自动重连（" + attempt + "/2）";
+            Diagnostics.Trace(device.Name, "recovery-scheduled",
+                "code=" + exitCode + " attempt=" + attempt + " delay=" + delay);
+
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                System.Threading.Thread.Sleep(delay);
+                if (IsDisposed)
+                    return;
+                try
+                {
+                    BeginInvoke((MethodInvoker)delegate
+                    {
+                        if (device.RecoveryRequestId != requestId ||
+                            device.SessionGeneration != exitedGeneration || device.StopRequested)
+                            return;
+                        if (!IsUsbDeviceOnline(device.Serial))
+                        {
+                            device.MirrorStarting = false;
+                            ScheduleRecovery(device, exitedGeneration, exitCode);
+                            return;
+                        }
+                        LaunchDevice(device);
                     });
                 }
                 catch { }
@@ -2358,8 +2611,9 @@ namespace OPhoneMirror
                 bool normalizeShortPhrase = keyboardMode == 0 && previousDeviceMode == 1;
                 string keyboardArg = keyboardMode == 1 ? " --keyboard=uhid" : string.Empty;
                 string args = string.Format(
-                    "--serial={0} --window-title=\"{1} USB Low Latency\" --video-codec=h264 --max-fps=60 --video-bit-rate=16M --video-buffer=0 --no-audio --shortcut-mod=lalt --window-x={2} --window-y=80 --window-width=450 --window-height=900{3}",
-                    device.Serial, device.Name, device.WindowX, keyboardArg);
+                    "--serial={0} --window-title=\"{1} USB Low Latency\" --video-codec=h264 --max-fps=60 --video-bit-rate=16M --video-buffer=0 --no-audio --shortcut-mod=lalt --window-x={2} --window-y=80 --window-width=450 --window-height=900 -V {4}{3}",
+                    device.Serial, device.Name, device.WindowX, keyboardArg,
+                    Diagnostics.DebugEnabled ? "debug" : "info");
 
                 ProcessStartInfo psi = new ProcessStartInfo();
                 psi.FileName = scrcpyPath;
@@ -2367,10 +2621,26 @@ namespace OPhoneMirror
                 psi.WorkingDirectory = Path.GetDirectoryName(scrcpyPath);
                 psi.UseShellExecute = false;
                 psi.CreateNoWindow = true;
+                psi.RedirectStandardOutput = true;
+                psi.RedirectStandardError = true;
+                psi.StandardOutputEncoding = Encoding.UTF8;
+                psi.StandardErrorEncoding = Encoding.UTF8;
                 Process mirrorProcess = Process.Start(psi);
+                mirrorProcess.OutputDataReceived += delegate(object sender, DataReceivedEventArgs e)
+                {
+                    if (!string.IsNullOrEmpty(e.Data))
+                        Diagnostics.Trace(device.Name, "scrcpy-out", e.Data);
+                };
+                mirrorProcess.ErrorDataReceived += delegate(object sender, DataReceivedEventArgs e)
+                {
+                    if (!string.IsNullOrEmpty(e.Data))
+                        Diagnostics.Trace(device.Name, "scrcpy-err", e.Data);
+                };
                 AttachMirrorProcess(device, mirrorProcess, false);
+                mirrorProcess.BeginOutputReadLine();
+                mirrorProcess.BeginErrorReadLine();
                 ApplyTopMostWhenReady(device, mirrorProcess);
-                WatchMirrorStarted(device, mirrorProcess);
+                WatchMirrorStarted(device, mirrorProcess, device.SessionGeneration);
                 SaveDeviceMode(device.Serial, keyboardMode);
                 if (screenOffToggle.Checked)
                     StartScreenControl(device);
@@ -2588,57 +2858,66 @@ namespace OPhoneMirror
 
         private void StartScreenControl(DeviceCard device)
         {
-            if (!screenOffToggle.Checked || !IsProcessRunning(device.MirrorProcess))
-                return;
-
-            int requestId = System.Threading.Interlocked.Increment(ref device.ScreenPowerRequestId);
-            System.Threading.ThreadPool.QueueUserWorkItem(delegate
-            {
-                System.Threading.Thread.Sleep(900);
-                if (IsDisposed || requestId != device.ScreenPowerRequestId)
-                    return;
-
-                try
-                {
-                    BeginInvoke((MethodInvoker)delegate
-                    {
-                        if (requestId != device.ScreenPowerRequestId || !screenOffToggle.Checked ||
-                            !IsProcessRunning(device.MirrorProcess))
-                            return;
-
-                        bool sent = SendMirrorScreenPower(device, false);
-                        device.ScreenOffApplied = sent;
-                        footerStatus.Text = sent
-                            ? device.Name + "：已关闭手机实体屏幕，投屏继续运行"
-                            : device.Name + "：未能切换实体屏幕状态，请重新启动投屏后再试";
-                    });
-                }
-                catch
-                {
-                    // The main form may close while the delayed command is pending.
-                }
-            });
+            device.ScreenDesiredOff = true;
+            QueueScreenPower(device);
         }
 
         private void StopScreenControl(DeviceCard device, bool wakeDevice)
         {
-            System.Threading.Interlocked.Increment(ref device.ScreenPowerRequestId);
-            bool shouldWake = wakeDevice && device.ScreenOffApplied;
-            device.ScreenOffApplied = false;
-            if (!shouldWake || string.IsNullOrWhiteSpace(device.Serial))
-                return;
-
-            bool sent = SendMirrorScreenPower(device, true);
-            if (sent)
+            if (!wakeDevice)
             {
-                footerStatus.Text = device.Name + "：手机实体屏幕已恢复";
+                System.Threading.Interlocked.Increment(ref device.ScreenPowerRequestId);
                 return;
             }
+            device.ScreenDesiredOff = false;
+            QueueScreenPower(device);
+        }
 
+        private void QueueScreenPower(DeviceCard device)
+        {
+            int requestId = System.Threading.Interlocked.Increment(ref device.ScreenPowerRequestId);
+            int generation = device.SessionGeneration;
+            Diagnostics.Trace(device.Name, "screen-power-request",
+                "off=" + device.ScreenDesiredOff + " request=" + requestId + " generation=" + generation);
             System.Threading.ThreadPool.QueueUserWorkItem(delegate
             {
-                AdbResult wakeResult = WakeDevice(device.Serial);
-                SetWakeResultStatus(device, wakeResult.Success);
+                System.Threading.Thread.Sleep(150);
+                if (IsDisposed || requestId != device.ScreenPowerRequestId)
+                    return;
+                bool desiredOff = device.ScreenDesiredOff;
+                bool sent = SendMirrorScreenPower(device, !desiredOff);
+                if (!sent && requestId == device.ScreenPowerRequestId)
+                {
+                    System.Threading.Thread.Sleep(150);
+                    if (!IsDisposed && requestId == device.ScreenPowerRequestId)
+                        sent = SendMirrorScreenPower(device, !desiredOff);
+                }
+                if (IsDisposed || requestId != device.ScreenPowerRequestId ||
+                    generation != device.SessionGeneration)
+                    return;
+                try
+                {
+                    BeginInvoke((MethodInvoker)delegate
+                    {
+                        if (requestId != device.ScreenPowerRequestId ||
+                            generation != device.SessionGeneration)
+                            return;
+                        if (sent)
+                        {
+                            device.ScreenOffApplied = desiredOff;
+                            footerStatus.Text = desiredOff
+                                ? device.Name + "：已关闭手机实体屏幕，投屏继续运行"
+                                : device.Name + "：手机实体屏幕已恢复";
+                        }
+                        else
+                        {
+                            footerStatus.Text = device.Name + "：未能切换实体屏幕状态，请重新启动投屏后再试";
+                        }
+                        Diagnostics.Trace(device.Name, "screen-power-result",
+                            "off=" + desiredOff + " sent=" + sent);
+                    });
+                }
+                catch { }
             });
         }
 
@@ -2646,52 +2925,29 @@ namespace OPhoneMirror
         {
             try
             {
-                Process process = device.MirrorProcess;
-                if (!IsProcessRunning(process))
-                    return false;
-
-                process.Refresh();
-                IntPtr window = process.MainWindowHandle;
-                if (window == IntPtr.Zero)
-                    return false;
-
-                IntPtr previousWindow = GetForegroundWindow();
-                if (!SetForegroundWindow(window))
-                    return false;
-
-                // scrcpy documents MOD+O for display-off. When the physical display is off,
-                // a right-click inside the mirror explicitly turns it back on. The real mouse
-                // event is required because SDL ignores a posted background mouse message.
-                System.Threading.Thread.Sleep(60);
-                if (turnOn)
+                lock (screenPowerInputGate)
                 {
-                    NativeRect bounds;
-                    if (!GetWindowRect(window, out bounds))
+                    Process process = device.MirrorProcess;
+                    if (!IsProcessRunning(process))
                         return false;
-
-                    Point previousCursor = Cursor.Position;
+                    process.Refresh();
+                    IntPtr window = process.MainWindowHandle;
+                    if (window == IntPtr.Zero)
+                        return false;
+                    IntPtr previousWindow = GetForegroundWindow();
+                    if (!SetForegroundWindow(window))
+                        return false;
                     try
                     {
-                        Cursor.Position = new Point(
-                            bounds.Left + ((bounds.Right - bounds.Left) / 2),
-                            bounds.Top + ((bounds.Bottom - bounds.Top) / 2));
-                        MouseEvent(MouseRightDown, 0, 0, 0, UIntPtr.Zero);
-                        MouseEvent(MouseRightUp, 0, 0, 0, UIntPtr.Zero);
-                        System.Threading.Thread.Sleep(80);
+                        System.Threading.Thread.Sleep(35);
+                        return SendScreenPowerShortcut(turnOn);
                     }
                     finally
                     {
-                        Cursor.Position = previousCursor;
+                        if (previousWindow != IntPtr.Zero && previousWindow != window)
+                            SetForegroundWindow(previousWindow);
                     }
                 }
-                else
-                {
-                    SendKeys.SendWait("%o");
-                }
-                System.Threading.Thread.Sleep(40);
-                if (previousWindow != IntPtr.Zero && previousWindow != window)
-                    SetForegroundWindow(previousWindow);
-                return true;
             }
             catch
             {
@@ -2699,32 +2955,43 @@ namespace OPhoneMirror
             }
         }
 
-        private AdbResult WakeDevice(string serial)
+        private static bool SendScreenPowerShortcut(bool turnOn)
         {
-            return new AdbClient(adbPath, serial).Shell("input keyevent 224", 2500);
-        }
-
-        private void SetWakeResultStatus(DeviceCard device, bool success)
-        {
-            if (IsDisposed || Disposing)
-                return;
-
+            List<Input> inputs = new List<Input>();
+            AddKey(inputs, VirtualKeyLMenu, false);
+            if (turnOn)
+                AddKey(inputs, VirtualKeyLShift, false);
+            AddKey(inputs, VirtualKeyO, false);
+            AddKey(inputs, VirtualKeyO, true);
+            if (turnOn)
+                AddKey(inputs, VirtualKeyLShift, true);
+            AddKey(inputs, VirtualKeyLMenu, true);
             try
             {
-                BeginInvoke((MethodInvoker)delegate
-                {
-                    if (!screenOffToggle.Checked)
-                    {
-                        footerStatus.Text = success
-                            ? device.Name + "：手机实体屏幕已恢复"
-                            : device.Name + "：未能自动点亮，请按一下手机电源键";
-                    }
-                });
+                return SendInput((uint)inputs.Count, inputs.ToArray(), Marshal.SizeOf(typeof(Input))) == inputs.Count;
             }
-            catch
+            finally
             {
-                // The main form may close while the wake command is completing.
+                // Always release modifiers. This makes a rapid toggle unable to leave Alt held.
+                Input[] release = new Input[2];
+                release[0] = CreateKeyInput(VirtualKeyLShift, true);
+                release[1] = CreateKeyInput(VirtualKeyLMenu, true);
+                SendInput((uint)release.Length, release, Marshal.SizeOf(typeof(Input)));
             }
+        }
+
+        private static void AddKey(List<Input> inputs, ushort key, bool keyUp)
+        {
+            inputs.Add(CreateKeyInput(key, keyUp));
+        }
+
+        private static Input CreateKeyInput(ushort key, bool keyUp)
+        {
+            Input input = new Input();
+            input.Type = 1;
+            input.Data.Keyboard.VirtualKey = key;
+            input.Data.Keyboard.Flags = keyUp ? 0x0002U : 0U;
+            return input;
         }
 
         private static bool IsProcessRunning(Process process)
@@ -2862,6 +3129,11 @@ namespace OPhoneMirror
             if (!pendingRestart.Contains(device))
                 pendingRestart.Add(device);
 
+            device.StopRequested = true;
+            device.SessionState = MirrorSessionState.Stopping;
+            device.MirrorStopping = true;
+            device.MirrorStarting = false;
+            Diagnostics.Trace(device.Name, "mirror-restart-requested", "keyboard-mode");
             System.Threading.Interlocked.Increment(ref device.TopMostRequestId);
             StopMirrorProcesses(running, false);
         }
@@ -2967,6 +3239,33 @@ namespace OPhoneMirror
         [DllImport("user32.dll")]
         private static extern bool SetForegroundWindow(IntPtr window);
 
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern uint SendInput(uint count, Input[] inputs, int size);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct Input
+        {
+            public uint Type;
+            public InputUnion Data;
+        }
+
+        [StructLayout(LayoutKind.Explicit)]
+        private struct InputUnion
+        {
+            [FieldOffset(0)]
+            public KeyboardInput Keyboard;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct KeyboardInput
+        {
+            public ushort VirtualKey;
+            public ushort ScanCode;
+            public uint Flags;
+            public uint Time;
+            public UIntPtr ExtraInfo;
+        }
+
         [StructLayout(LayoutKind.Sequential)]
         private struct NativeRect
         {
@@ -2976,8 +3275,9 @@ namespace OPhoneMirror
             public int Bottom;
         }
 
-        private const uint MouseRightDown = 0x0008;
-        private const uint MouseRightUp = 0x0010;
+        private const ushort VirtualKeyLMenu = 0xA4;
+        private const ushort VirtualKeyLShift = 0xA0;
+        private const ushort VirtualKeyO = 0x4F;
         private const uint SwpNoSize = 0x0001;
         private const uint SwpNoMove = 0x0002;
         private const uint SwpNoActivate = 0x0010;
@@ -2997,14 +3297,6 @@ namespace OPhoneMirror
             int height,
             uint flags);
 
-        [DllImport("user32.dll", EntryPoint = "mouse_event")]
-        private static extern void MouseEvent(
-            uint flags,
-            uint dx,
-            uint dy,
-            uint data,
-            UIntPtr extraInfo);
-
     }
 
     internal static class Program
@@ -3014,6 +3306,31 @@ namespace OPhoneMirror
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
+
+            for (int i = 0; i < args.Length; i++)
+            {
+                if (string.Equals(args[i], "--diagnostics=debug", StringComparison.OrdinalIgnoreCase))
+                    Diagnostics.Configure(true);
+            }
+
+            if (args.Length >= 1 && args[0] == "--stress-model")
+            {
+                int seed = args.Length >= 2 ? int.Parse(args[1]) : 20260905;
+                return StressModel.Run(seed, 100000);
+            }
+
+            if (args.Length >= 1 && args[0] == "--stress-live")
+            {
+                int deviceIndex = args.Length >= 2 ? int.Parse(args[1]) : 0;
+                int durationMinutes = args.Length >= 3 ? int.Parse(args[2]) : 10;
+                int seed = args.Length >= 4 ? int.Parse(args[3]) : 20260905;
+                using (MainForm form = new MainForm())
+                {
+                    form.Shown += delegate { StressRunner.Start(form, deviceIndex, durationMinutes, seed); };
+                    Application.Run(form);
+                }
+                return StressRunner.LastExitCode;
+            }
 
             if (args.Length == 1 && args[0] == "--self-test")
             {

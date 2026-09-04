@@ -11,6 +11,7 @@ OPhoneMirror 是一个 Windows 桌面工具，通过 USB ADB 和 scrcpy 投屏�
 - H.264、60 fps、低缓冲的键鼠控制预设。
 - 控制面板中的“保持在最顶层”可在投屏运行中热切换，并会记住上次选择。
 - “仅熄手机屏幕”可在投屏运行中通过当前投屏会话热切换，不重启主投屏窗口。
+- 投屏会话具有启动、运行、停止和自动恢复状态；意外断线最多自动重试两次，并保留脱敏诊断日志。
 - 搜狗短语模式与数字选词模式，可在投屏运行时自动重连切换。
 - 电脑与手机文字剪贴板互通。
 - 双栏文件管理器：浏览两侧目录，多选文件/文件夹并双向传输；传输活动按需从底部展开。
@@ -44,6 +45,16 @@ notepad .\devices.local.txt
 # 可选：无界面检查设备配置、ADB 和 scrcpy 是否齐全；退出码 0 表示通过。
 $process = Start-Process .\dist\OPhoneMirror\OPhoneMirror.exe -ArgumentList "--self-test" -Wait -PassThru
 $process.ExitCode
+
+# 对 DeviceIndex 0（第一台设备）执行可重放的 10 分钟实机稳定性测试。
+# 会保存随机种子和回放文件到 .artifacts\stability（已被 Git 忽略）。
+.\tests\Run-StabilityStress.ps1 -DeviceIndex 0 -DurationMinutes 10 -Seed 20260905
+
+# 用某次失败生成的 replay.json 精确重放。
+.\tests\Run-StabilityStress.ps1 -Replay ".artifacts\stability\<session>\replay.json"
+
+# 仅当其他手机均已断开时，才模拟 10 次 ADB 服务瞬断恢复。
+.\tests\Run-StabilityStress.ps1 -DeviceIndex 0 -InjectAdbFaults -FaultCycles 10
 ```
 
 设备配置每行格式如下，最多读取两行：
@@ -67,4 +78,4 @@ $process.ExitCode
 
 ## 隐私
 
-真实设备配置保存在 `devices.local.txt`，运行设置保存在 `%LOCALAPPDATA%\OPhoneMirror`。仓库忽略构建产物、设备标识、密钥文件和本机临时数据；提交前仍应检查暂存内容，避免上传凭据或个人文件。
+真实设备配置保存在 `devices.local.txt`，运行设置保存在 `%LOCALAPPDATA%\OPhoneMirror`。仅在异常退出或压力测试失败时，会在 `%LOCALAPPDATA%\OPhoneMirror\Diagnostics` 留下最近五份脱敏日志。仓库忽略构建产物、设备标识、密钥文件和本机临时数据；提交前仍应检查暂存内容，避免上传凭据或个人文件。

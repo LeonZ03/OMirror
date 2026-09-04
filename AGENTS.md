@@ -6,7 +6,7 @@ This file is the compact source of truth for AI agents working in this repositor
 
 - Name: `OPhoneMirror`.
 - Platform: Windows desktop, WinForms on .NET Framework.
-- Current UI version: `1.12.1`; bundled runtime expected: scrcpy `4.1` with ADB `37.0.1`.
+- Current UI version: `1.13.0`; bundled runtime expected: scrcpy `4.1` with ADB `37.0.1`.
 - There is intentionally no `.csproj`: `build.ps1` invokes the .NET Framework `csc.exe` directly.
 - Repository source is self-contained. `dist/` and `devices.local.txt` are local-only and ignored.
 
@@ -20,6 +20,8 @@ This file is the compact source of truth for AI agents working in this repositor
 - `devices.example.txt`: public configuration template.
 - `devices.local.txt`: real serials and labels; never commit.
 - `build.ps1`: canonical build/package entry point.
+- `Diagnostics.cs`: bounded in-memory diagnostics and redacted abnormal-exit bundles under `%LOCALAPPDATA%`.
+- `StressModel.cs`, `StressRunner.cs`, and `tests/Run-StabilityStress.ps1`: deterministic lifecycle model test plus safe Reno6 live stress runner/replay entrypoint.
 - `OPhoneMirror.exe --self-test`: non-interactive package check; exit `0` means both device entries plus ADB/scrcpy were found, while exit `2` means configuration/runtime is incomplete.
 
 ## Configuration contract
@@ -37,11 +39,13 @@ Keyboard, screen-off, always-on-top, theme, and last-selected-device settings li
 ## Verified implementation facts
 
 - Mirror launch preset: USB serial, H.264, 60 fps, 16 Mbps, zero video buffer, no audio, 450×900 window. Do not pass scrcpy's `--always-on-top`; the persisted control-panel checkbox applies `HWND_TOPMOST` or `HWND_NOTOPMOST` after the window is created and hot-applies the same state without restarting scrcpy.
-- The persisted “仅熄手机屏幕” setting is hot-applied through the one existing primary mirror only. It temporarily focuses that window and uses scrcpy's documented `MOD+O` for display-off. For display-on it issues a real right-click at the mirror center (SDL ignores posted background mouse events), then restores both cursor position and the previous foreground window. Never add `--turn-screen-off` to the launch arguments or start a second control-only scrcpy instance: multiple long-lived scrcpy servers proved unstable on the Reno6 USB transport. `KEYCODE_WAKEUP` is only a fallback for screen-on.
+- The persisted “仅熄手机屏幕” setting is hot-applied through the one existing primary mirror only. It serializes/coalesces requests and uses documented scrcpy shortcuts: `Left Alt+O` off and `Left Alt+Left Shift+O` on. Never use right-click to wake: when the display is already on, scrcpy maps right-click to Android Back. The implementation always releases modifiers and restores the previous foreground window. Never add `--turn-screen-off` to launch arguments or start a second control-only scrcpy instance.
 - Reno6 repeatedly entered ADB `offline` with the ADB `37.0.0` bundled by scrcpy 4.1, including while no OPhoneMirror/scrcpy process was running. Starting the separately installed Platform Tools ADB `37.0.1-15733141` immediately restored `device`. Release builds must therefore pass `-AdbDir` and bundle `adb.exe`, `AdbWinApi.dll`, and `AdbWinUsbApi.dll` from that tested runtime.
 - Periodic ADB probes run on the thread pool behind an interlocked single-flight guard so a slow/offline USB transport cannot freeze the WinForms UI.
 - The main window presents one active device. Clicking its selector opens a two-row device list; selection is persisted by index and updates the launch/transfer actions without changing the per-device scrcpy process state.
-- The selector list is an owned borderless `DevicePickerForm`, anchored below the active-device row. It closes on deactivation or Escape and keeps the main settings layout stable.
+- The selector list is an owned non-activating tool window, anchored below the active-device row. A main-window click closes it without deactivating the control panel; Escape and external app activation also close it.
+- Mirror lifecycle is `Stopped / Starting / Running / Stopping / Recovering`. Each process has a generation id, so stale exit callbacks cannot alter a new session. Exit code `2` (disconnect) and unexpected nonzero exits may retry twice after 750ms and 2s; manual stop and keyboard hot-restart never consume the retry budget.
+- scrcpy stdout/stderr are read asynchronously. Normal runs retain a bounded memory tail; unexpected exit writes a redacted log. Keep only five diagnostics bundles, and never add diagnostics/artifacts to Git.
 - Theme mode persists as `0=auto`, `1=light`, or `2=dark`. Auto reads Windows `AppsUseLightTheme`; `SystemEvents.UserPreferenceChanged` hot-applies semantic colors to the main form, picker, open transfer forms, grids, and DWM title bars.
 - The main action is stateful: idle `投屏`, starting `连接中`, running `停止`, and stopping `停止中`. Existing matching scrcpy processes are adopted instead of duplicated, and process exit updates the UI asynchronously.
 - UI text uses `Microsoft YaHei UI` for crisp Chinese GDI rendering and `Segoe UI` only for the Latin product wordmark. Standard actions are vector-drawn icons with tooltips and accessible names; no emoji or bitmap icon font is required.
@@ -90,6 +94,7 @@ Before committing:
 3. Search tracked files for real serials, private IPs, home-directory usernames, tokens, passwords, private keys, and generated binaries.
 4. For transfer changes, validate both directions with a Unicode filename; for directory changes, include a nested Unicode folder and compare hashes.
 5. For Camera/listing changes, verify a large directory displays only the first batch and “更多” remains enabled.
+6. For lifecycle/input changes, run `OPhoneMirror.exe --stress-model <seed>` and, with only the target handset connected, `tests\Run-StabilityStress.ps1 -DeviceIndex 0 -DurationMinutes 10 -Seed <seed>`.
 
 ## Change constraints
 

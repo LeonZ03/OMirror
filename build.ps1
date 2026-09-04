@@ -48,7 +48,10 @@ $sources = @(
     (Join-Path $projectRoot "OPhoneMirror.cs"),
     (Join-Path $projectRoot "AdbClient.cs"),
     (Join-Path $projectRoot "KeyboardCapture.cs"),
-    (Join-Path $projectRoot "TransferForm.cs")
+    (Join-Path $projectRoot "TransferForm.cs"),
+    (Join-Path $projectRoot "Diagnostics.cs"),
+    (Join-Path $projectRoot "StressModel.cs"),
+    (Join-Path $projectRoot "StressRunner.cs")
 )
 
 & $compiler /nologo /target:winexe /optimize+ "/win32manifest:$manifest" `
