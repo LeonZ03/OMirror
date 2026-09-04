@@ -1448,14 +1448,11 @@ namespace OPhoneMirror
             {
                 CreateParams parameters = base.CreateParams;
                 parameters.ClassStyle |= 0x00020000;
-                parameters.ExStyle |= 0x08000000 | 0x00000080;
+                // Keep this as a normal owned tool window. WS_EX_NOACTIVATE made
+                // the picker fail to surface on some WinForms/DWM combinations.
+                parameters.ExStyle |= 0x00000080;
                 return parameters;
             }
-        }
-
-        protected override bool ShowWithoutActivation
-        {
-            get { return true; }
         }
 
         protected override void OnResize(EventArgs e)
@@ -1792,7 +1789,6 @@ namespace OPhoneMirror
                 AdoptExistingMirrorsAsync();
                 refreshTimer.Start();
             };
-            Deactivate += delegate { CloseDeviceList(); };
             KeyDown += delegate(object sender, KeyEventArgs e)
             {
                 if (e.KeyCode == Keys.Escape && devicePicker.Visible)
