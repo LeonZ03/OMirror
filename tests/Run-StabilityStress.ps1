@@ -29,6 +29,7 @@ if (-not (Test-Path -LiteralPath $exe)) {
 }
 
 $session = Get-Date -Format "yyyyMMdd-HHmmss"
+$startedAt = Get-Date
 $outDir = Join-Path $artifactsRoot $session
 New-Item -ItemType Directory -Path $outDir -Force | Out-Null
 $replayFile = Join-Path $outDir "replay.json"
@@ -69,7 +70,8 @@ $live.WaitForExit()
 
 $diagnostics = Join-Path $env:LOCALAPPDATA "OPhoneMirror\Diagnostics"
 if (Test-Path -LiteralPath $diagnostics) {
-    Get-ChildItem -LiteralPath $diagnostics -Filter "*.log" | Sort-Object LastWriteTime -Descending |
+    Get-ChildItem -LiteralPath $diagnostics -Filter "*.log" | Where-Object { $_.LastWriteTime -ge $startedAt } |
+        Sort-Object LastWriteTime -Descending |
         Select-Object -First 5 | Copy-Item -Destination $outDir -Force
 }
 "ExitCode=$($live.ExitCode) Seed=$Seed DeviceIndex=$DeviceIndex" |
