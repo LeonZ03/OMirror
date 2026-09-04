@@ -50,15 +50,15 @@ namespace OPhoneMirror
         private readonly DataGridView remoteGrid;
         private readonly DataGridView taskGrid;
         private readonly RoundedPanel taskPanel;
-        private readonly Button sendButton;
-        private readonly Button receiveButton;
-        private readonly Button clearTasksButton;
+        private readonly ModernButton sendButton;
+        private readonly ModernButton receiveButton;
+        private readonly ModernButton clearTasksButton;
         private readonly ModernButton activityToggleButton;
         private readonly ProgressBar progress;
         private readonly Label statusLabel;
         private readonly BackgroundWorker transferWorker;
         private readonly ToolTip toolTip;
-        private Button remoteMoreButton;
+        private ModernButton remoteMoreButton;
 
         private string localPath;
         private string remotePath = "/sdcard/Download";
@@ -166,7 +166,7 @@ namespace OPhoneMirror
             taskPanel.Name = "taskPanel";
             taskPanel.BackColor = panelColor;
             taskPanel.BorderColor = UiTheme.Border;
-            taskPanel.Shadow = true;
+            taskPanel.Shadow = false;
             Controls.Add(taskPanel);
 
             Label taskTitle = new Label();
@@ -230,7 +230,7 @@ namespace OPhoneMirror
             localPanel.Controls.Add(MakePaneCaption("选择源文件，或选择文件的接收目录"));
             localPanel.Controls.Add(localPathBox);
 
-            Button up = MakeToolbarIcon(UiIcon.ArrowUp, "上一级");
+            ModernButton up = MakeToolbarIcon(UiIcon.ArrowUp, "上一级");
             up.Location = new Point(14, 110);
             up.Click += delegate
             {
@@ -240,17 +240,17 @@ namespace OPhoneMirror
             };
             localPanel.Controls.Add(up);
 
-            Button refresh = MakeToolbarIcon(UiIcon.Refresh, "刷新");
+            ModernButton refresh = MakeToolbarIcon(UiIcon.Refresh, "刷新");
             refresh.Location = new Point(56, 110);
             refresh.Click += delegate { RefreshLocal(); };
             localPanel.Controls.Add(refresh);
 
-            Button browse = MakeToolbarIcon(UiIcon.Folder, "选择电脑目录");
+            ModernButton browse = MakeToolbarIcon(UiIcon.Folder, "选择电脑目录");
             browse.Location = new Point(98, 110);
             browse.Click += BrowseLocal;
             localPanel.Controls.Add(browse);
 
-            Button newFolder = MakeToolbarButton("新建文件夹");
+            ModernButton newFolder = MakeToolbarButton("新建文件夹");
             newFolder.Location = new Point(140, 110);
             newFolder.Size = new Size(104, 30);
             newFolder.Click += CreateLocalFolder;
@@ -267,29 +267,29 @@ namespace OPhoneMirror
             remotePanel.Controls.Add(MakePaneCaption("手机共享存储，可直接前往下载或相册目录"));
             remotePanel.Controls.Add(remotePathBox);
 
-            Button up = MakeToolbarIcon(UiIcon.ArrowUp, "上一级");
+            ModernButton up = MakeToolbarIcon(UiIcon.ArrowUp, "上一级");
             up.Location = new Point(14, 110);
             up.Click += delegate { NavigateRemote(AdbClient.RemoteParent(remotePath)); };
             remotePanel.Controls.Add(up);
 
-            Button refresh = MakeToolbarIcon(UiIcon.Refresh, "刷新");
+            ModernButton refresh = MakeToolbarIcon(UiIcon.Refresh, "刷新");
             refresh.Location = new Point(56, 110);
             refresh.Click += delegate { RefreshRemote(); };
             remotePanel.Controls.Add(refresh);
 
-            Button downloads = MakeToolbarButton("Download");
+            ModernButton downloads = MakeToolbarButton("Download");
             downloads.Location = new Point(98, 110);
             downloads.Size = new Size(92, 30);
             downloads.Click += delegate { NavigateRemote("/sdcard/Download"); };
             remotePanel.Controls.Add(downloads);
 
-            Button newFolder = MakeToolbarButton("新建文件夹");
+            ModernButton newFolder = MakeToolbarButton("新建文件夹");
             newFolder.Location = new Point(198, 110);
             newFolder.Size = new Size(96, 30);
             newFolder.Click += CreateRemoteFolder;
             remotePanel.Controls.Add(newFolder);
 
-            Button dcim = MakeToolbarButton("DCIM");
+            ModernButton dcim = MakeToolbarButton("DCIM");
             dcim.Location = new Point(302, 110);
             dcim.Size = new Size(62, 30);
             dcim.Click += delegate { NavigateRemote("/sdcard/DCIM"); };
@@ -363,7 +363,7 @@ namespace OPhoneMirror
             RoundedPanel panel = new RoundedPanel();
             panel.BackColor = panelColor;
             panel.BorderColor = UiTheme.Border;
-            panel.Shadow = true;
+            panel.Shadow = false;
             return panel;
         }
 
@@ -395,7 +395,7 @@ namespace OPhoneMirror
             return box;
         }
 
-        private Button MakeTransferButton(string caption)
+        private ModernButton MakeTransferButton(string caption)
         {
             ModernButton button = new ModernButton();
             button.Text = caption;
@@ -407,7 +407,7 @@ namespace OPhoneMirror
             return button;
         }
 
-        private Button MakeToolbarButton(string caption)
+        private ModernButton MakeToolbarButton(string caption)
         {
             ModernButton button = new ModernButton();
             button.Text = caption;
@@ -419,9 +419,9 @@ namespace OPhoneMirror
             return button;
         }
 
-        private Button MakeToolbarIcon(UiIcon icon, string accessibleName)
+        private ModernButton MakeToolbarIcon(UiIcon icon, string accessibleName)
         {
-            ModernButton button = (ModernButton)MakeToolbarButton(string.Empty);
+            ModernButton button = MakeToolbarButton(string.Empty);
             button.Icon = icon;
             button.IconOnly = true;
             button.IconSize = 18;

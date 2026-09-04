@@ -6,7 +6,7 @@ This file is the compact source of truth for AI agents working in this repositor
 
 - Name: `OPhoneMirror`.
 - Platform: Windows desktop, WinForms on .NET Framework.
-- Current UI version: `1.12.0`; bundled runtime expected: scrcpy `4.1` with ADB `37.0.1`.
+- Current UI version: `1.12.1`; bundled runtime expected: scrcpy `4.1` with ADB `37.0.1`.
 - There is intentionally no `.csproj`: `build.ps1` invokes the .NET Framework `csc.exe` directly.
 - Repository source is self-contained. `dist/` and `devices.local.txt` are local-only and ignored.
 
@@ -45,7 +45,8 @@ Keyboard, screen-off, always-on-top, theme, and last-selected-device settings li
 - Theme mode persists as `0=auto`, `1=light`, or `2=dark`. Auto reads Windows `AppsUseLightTheme`; `SystemEvents.UserPreferenceChanged` hot-applies semantic colors to the main form, picker, open transfer forms, grids, and DWM title bars.
 - The main action is stateful: idle `投屏`, starting `连接中`, running `停止`, and stopping `停止中`. Existing matching scrcpy processes are adopted instead of duplicated, and process exit updates the UI asynchronously.
 - UI text uses `Microsoft YaHei UI` for crisp Chinese GDI rendering and `Segoe UI` only for the Latin product wordmark. Standard actions are vector-drawn icons with tooltips and accessible names; no emoji or bitmap icon font is required.
-- `ModernButton` owns a rounded Win32 `Region`, not only a painted rounded path. Keep that region update on resize: it prevents the native rectangular disabled-button background from leaking through as black corner triangles.
+- `ModernButton` is a fully owner-drawn `Control`, not a native `Button`, and intentionally has no rounded Win32 `Region`. The single anti-aliased paint boundary avoids DPI-scaled corner fringes while the custom accessibility object preserves push-button semantics and keyboard activation.
+- `app.manifest` declares `PerMonitorV2,PerMonitor` plus the legacy `true/pm` fallback. Keep the existing `AutoScaleMode.Dpi` forms so Windows renders text and vectors at the monitor's native scale instead of bitmap-stretching the whole window.
 - Input modes are deliberately different:
   - Short-phrase mode uses scrcpy default SDK keyboard and adds no `--keyboard`, `--raw-key-events`, or `--prefer-text` flag.
   - Numeric-candidate mode adds only `--keyboard=uhid`.

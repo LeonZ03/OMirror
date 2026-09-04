@@ -12,8 +12,8 @@ using System.Windows.Forms;
 
 [assembly: AssemblyTitle("OPhoneMirror")]
 [assembly: AssemblyProduct("OPhoneMirror")]
-[assembly: AssemblyVersion("1.12.0.0")]
-[assembly: AssemblyFileVersion("1.12.0.0")]
+[assembly: AssemblyVersion("1.12.1.0")]
+[assembly: AssemblyFileVersion("1.12.1.0")]
 
 namespace OPhoneMirror
 {
@@ -421,10 +421,11 @@ namespace OPhoneMirror
         }
     }
 
-    internal sealed class ModernButton : Button
+    internal sealed class ModernButton : Control
     {
         private bool hovered;
         private bool pressed;
+        private bool keyboardPressed;
         private int cornerRadius = 10;
         private readonly Timer iconAnimationTimer;
         private bool animateIcon;
@@ -449,7 +450,6 @@ namespace OPhoneMirror
             set
             {
                 cornerRadius = Math.Max(2, value);
-                UpdateRoundedRegion();
                 Invalidate();
             }
         }
@@ -459,12 +459,12 @@ namespace OPhoneMirror
             SetStyle(ControlStyles.UserPaint |
                 ControlStyles.AllPaintingInWmPaint |
                 ControlStyles.OptimizedDoubleBuffer |
-                ControlStyles.ResizeRedraw, true);
-            FlatStyle = FlatStyle.Flat;
-            FlatAppearance.BorderSize = 0;
-            UseVisualStyleBackColor = false;
+                ControlStyles.ResizeRedraw |
+                ControlStyles.Selectable |
+                ControlStyles.StandardClick, true);
             Cursor = Cursors.Hand;
             TabStop = true;
+            AccessibleRole = AccessibleRole.PushButton;
             iconAnimationTimer = new Timer();
             iconAnimationTimer.Interval = 40;
             iconAnimationTimer.Tick += delegate { Invalidate(); };
@@ -477,34 +477,9 @@ namespace OPhoneMirror
             base.Dispose(disposing);
         }
 
-        protected override void OnResize(EventArgs e)
-        {
-            base.OnResize(e);
-            UpdateRoundedRegion();
-        }
-
-        protected override void OnParentChanged(EventArgs e)
-        {
-            base.OnParentChanged(e);
-            UpdateRoundedRegion();
-        }
-
         protected override void OnPaintBackground(PaintEventArgs pevent)
         {
             pevent.Graphics.Clear(Parent == null ? BackColor : Parent.BackColor);
-        }
-
-        private void UpdateRoundedRegion()
-        {
-            if (Width < 2 || Height < 2)
-                return;
-
-            int radius = Math.Min(cornerRadius, Math.Min(Width, Height) / 2);
-            Region previous = Region;
-            using (GraphicsPath path = RoundedPanel.CreateRoundedRect(new Rectangle(0, 0, Width, Height), radius))
-                Region = new Region(path);
-            if (previous != null)
-                previous.Dispose();
         }
 
         protected override void OnMouseEnter(EventArgs e)
@@ -524,7 +499,11 @@ namespace OPhoneMirror
 
         protected override void OnMouseDown(MouseEventArgs mevent)
         {
-            pressed = true;
+            if (Enabled && mevent.Button == MouseButtons.Left)
+            {
+                Focus();
+                pressed = true;
+            }
             Invalidate();
             base.OnMouseDown(mevent);
         }
@@ -534,6 +513,59 @@ namespace OPhoneMirror
             pressed = false;
             Invalidate();
             base.OnMouseUp(mevent);
+        }
+
+        protected override bool IsInputKey(Keys keyData)
+        {
+            Keys key = keyData & Keys.KeyCode;
+            return key == Keys.Space || key == Keys.Enter || base.IsInputKey(keyData);
+        }
+
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            if (Enabled && (e.KeyCode == Keys.Space || e.KeyCode == Keys.Enter))
+            {
+                keyboardPressed = true;
+                pressed = true;
+                Invalidate();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
+            base.OnKeyDown(e);
+        }
+
+        protected override void OnKeyUp(KeyEventArgs e)
+        {
+            if (keyboardPressed && (e.KeyCode == Keys.Space || e.KeyCode == Keys.Enter))
+            {
+                keyboardPressed = false;
+                pressed = false;
+                Invalidate();
+                PerformClick();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
+            base.OnKeyUp(e);
+        }
+
+        protected override void OnLostFocus(EventArgs e)
+        {
+            keyboardPressed = false;
+            pressed = false;
+            Invalidate();
+            base.OnLostFocus(e);
+        }
+
+        protected override void OnGotFocus(EventArgs e)
+        {
+            Invalidate();
+            base.OnGotFocus(e);
+        }
+
+        public void PerformClick()
+        {
+            if (Enabled)
+                OnClick(EventArgs.Empty);
         }
 
         protected override void OnEnabledChanged(EventArgs e)
@@ -548,47 +580,39 @@ namespace OPhoneMirror
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
             Rectangle bounds = new Rectangle(0, 0, Width - 1, Height - 1);
             Color fill;
-            Color stroke;
             Color content;
 
             if (!Enabled)
             {
                 fill = UiTheme.SurfaceMuted;
-                stroke = UiTheme.SurfaceMuted;
                 content = UiTheme.TextDim;
             }
             else if (Kind == UiButtonKind.Primary)
             {
                 fill = pressed ? UiTheme.AccentPressed : hovered ? UiTheme.AccentHover : UiTheme.Accent;
-                stroke = fill;
                 content = Color.White;
             }
             else if (Kind == UiButtonKind.Danger)
             {
                 fill = pressed ? Color.FromArgb(190, UiTheme.Danger) :
                     hovered ? Color.FromArgb(224, UiTheme.Danger) : UiTheme.Danger;
-                stroke = fill;
                 content = Color.White;
             }
             else if (Kind == UiButtonKind.Quiet)
             {
                 fill = pressed ? UiTheme.SurfacePressed : hovered ? UiTheme.SurfaceHover : BackColor;
-                stroke = fill;
                 content = ForeColor;
             }
             else
             {
                 fill = pressed ? UiTheme.SurfacePressed : hovered ? UiTheme.SurfaceHover : UiTheme.SurfaceMuted;
-                stroke = fill;
                 content = UiTheme.Text;
             }
 
             using (GraphicsPath path = RoundedPanel.CreateRoundedRect(bounds, CornerRadius))
             using (SolidBrush brush = new SolidBrush(fill))
-            using (Pen pen = new Pen(stroke, 1))
             {
                 e.Graphics.FillPath(brush, path);
-                e.Graphics.DrawPath(pen, path);
             }
 
             if (Icon != UiIcon.None)
@@ -639,6 +663,37 @@ namespace OPhoneMirror
                 using (GraphicsPath focusPath = RoundedPanel.CreateRoundedRect(focus, Math.Max(4, CornerRadius - 2)))
                 using (Pen focusPen = new Pen(UiTheme.Accent, 2))
                     e.Graphics.DrawPath(focusPen, focusPath);
+            }
+        }
+
+        protected override AccessibleObject CreateAccessibilityInstance()
+        {
+            return new ModernButtonAccessibleObject(this);
+        }
+
+        private sealed class ModernButtonAccessibleObject : ControlAccessibleObject
+        {
+            private readonly ModernButton ownerButton;
+
+            public ModernButtonAccessibleObject(ModernButton owner)
+                : base(owner)
+            {
+                ownerButton = owner;
+            }
+
+            public override AccessibleRole Role
+            {
+                get { return AccessibleRole.PushButton; }
+            }
+
+            public override string DefaultAction
+            {
+                get { return "按下"; }
+            }
+
+            public override void DoDefaultAction()
+            {
+                ownerButton.PerformClick();
             }
         }
     }
@@ -1525,7 +1580,7 @@ namespace OPhoneMirror
             devicePanel.Name = "activeDevicePanel";
             devicePanel.BackColor = card;
             devicePanel.BorderColor = UiTheme.Border;
-            devicePanel.Shadow = true;
+            devicePanel.Shadow = false;
             devicePanel.Location = new Point(28, 70);
             devicePanel.Size = new Size(564, 178);
             Controls.Add(devicePanel);
@@ -1577,7 +1632,7 @@ namespace OPhoneMirror
             info.Name = "optionsPanel";
             info.BackColor = card;
             info.BorderColor = UiTheme.Border;
-            info.Shadow = true;
+            info.Shadow = false;
             info.Location = new Point(28, 264);
             info.Size = new Size(564, 208);
             info.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
@@ -1681,7 +1736,7 @@ namespace OPhoneMirror
             Controls.Add(footerStatus);
 
             Label version = new Label();
-            version.Text = "v1.12.0";
+            version.Text = "v1.12.1";
             version.ForeColor = muted;
             version.AutoSize = false;
             version.Location = new Point(512, 488);
