@@ -6,14 +6,14 @@ This file is the compact source of truth for AI agents working in this repositor
 
 - Name: `OPhoneMirror`.
 - Platform: Windows desktop, WinForms on .NET Framework.
-- Current UI version: `1.11.0`; bundled runtime expected: scrcpy `4.1` with ADB `37.0.1`.
+- Current UI version: `1.12.0`; bundled runtime expected: scrcpy `4.1` with ADB `37.0.1`.
 - There is intentionally no `.csproj`: `build.ps1` invokes the .NET Framework `csc.exe` directly.
 - Repository source is self-contained. `dist/` and `devices.local.txt` are local-only and ignored.
 
 ## Source map
 
-- `OPhoneMirror.cs`: shared Apple-inspired light UI tokens/controls, current-device selector/list, USB status, scrcpy launch/restart, keyboard mode persistence, and mode normalization.
-- `TransferForm.cs`: matching light two-pane PC/Android file browser, selection, transfer queue, collision confirmation, and large-directory batching.
+- `OPhoneMirror.cs`: shared Apple-inspired light/dark UI tokens and controls, owned device-picker popover, current-device state, scrcpy launch/stop/restart, keyboard mode persistence, and mode normalization.
+- `TransferForm.cs`: themed two-pane PC/Android file browser, collapsible activity drawer, selection, transfer queue, collision confirmation, and large-directory batching.
 - `AdbClient.cs`: quoted ADB execution, UTF-8 shell input, Unicode-safe file transfer, and tar-stream directory receive.
 - `KeyboardCapture.cs`: low-level Windows keyboard hook active only when a tracked scrcpy window owns foreground focus.
 - `app.manifest`: `asInvoker`; do not elevate, because Windows blocks Explorer drag/drop into elevated windows.
@@ -32,7 +32,7 @@ display name|model description|adb serial|window x
 
 The executable reads this file beside itself. Missing/invalid entries become disabled “未配置设备” cards. Never restore hard-coded serials, IP addresses, usernames, or absolute user paths in tracked source.
 
-Keyboard, screen-off, always-on-top, and last-selected-device settings live under `%LOCALAPPDATA%\OPhoneMirror`; they are runtime state, not repository content.
+Keyboard, screen-off, always-on-top, theme, and last-selected-device settings live under `%LOCALAPPDATA%\OPhoneMirror`; they are runtime state, not repository content.
 
 ## Verified implementation facts
 
@@ -41,6 +41,9 @@ Keyboard, screen-off, always-on-top, and last-selected-device settings live unde
 - Reno6 repeatedly entered ADB `offline` with the ADB `37.0.0` bundled by scrcpy 4.1, including while no OPhoneMirror/scrcpy process was running. Starting the separately installed Platform Tools ADB `37.0.1-15733141` immediately restored `device`. Release builds must therefore pass `-AdbDir` and bundle `adb.exe`, `AdbWinApi.dll`, and `AdbWinUsbApi.dll` from that tested runtime.
 - Periodic ADB probes run on the thread pool behind an interlocked single-flight guard so a slow/offline USB transport cannot freeze the WinForms UI.
 - The main window presents one active device. Clicking its selector opens a two-row device list; selection is persisted by index and updates the launch/transfer actions without changing the per-device scrcpy process state.
+- The selector list is an owned borderless `DevicePickerForm`, anchored below the active-device row. It closes on deactivation or Escape and keeps the main settings layout stable.
+- Theme mode persists as `0=auto`, `1=light`, or `2=dark`. Auto reads Windows `AppsUseLightTheme`; `SystemEvents.UserPreferenceChanged` hot-applies semantic colors to the main form, picker, open transfer forms, grids, and DWM title bars.
+- The main action is stateful: idle `投屏`, starting `连接中`, running `停止`, and stopping `停止中`. Existing matching scrcpy processes are adopted instead of duplicated, and process exit updates the UI asynchronously.
 - UI text uses `Microsoft YaHei UI` for crisp Chinese GDI rendering and `Segoe UI` only for the Latin product wordmark. Standard actions are vector-drawn icons with tooltips and accessible names; no emoji or bitmap icon font is required.
 - `ModernButton` owns a rounded Win32 `Region`, not only a painted rounded path. Keep that region update on resize: it prevents the native rectangular disabled-button background from leaking through as black corner triangles.
 - Input modes are deliberately different:
@@ -55,6 +58,7 @@ Keyboard, screen-off, always-on-top, and last-selected-device settings live unde
   - `Win` and `Ctrl+Esc` → Android `HOME` (`3`).
   - All hooks are released when the main form closes; no keys are logged.
 - Android shared storage defaults to `/sdcard/Download`; quick links include `/sdcard/Download` and `/sdcard/DCIM`.
+- The transfer activity panel defaults collapsed, expands automatically when a transfer starts, and remains manually collapsible while retaining task history.
 - Remote listing uses one Toybox command: `find ... -printf '%M|%s|%T@|%p\n'`. Do not regress to per-entry `-exec stat`.
 - A real Android 15 device with 12,122 Camera entries returned the batch metadata in about 2.7 seconds. UI renders 1,000 rows per batch and enables “更多” for the rest.
 - Windows ADB may corrupt a Unicode basename when it synthesizes a remote/local destination name. Uploads therefore use an ASCII temporary remote name followed by a UTF-8 shell rename.

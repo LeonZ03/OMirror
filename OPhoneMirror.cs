@@ -12,8 +12,8 @@ using System.Windows.Forms;
 
 [assembly: AssemblyTitle("OPhoneMirror")]
 [assembly: AssemblyProduct("OPhoneMirror")]
-[assembly: AssemblyVersion("1.11.0.0")]
-[assembly: AssemblyFileVersion("1.11.0.0")]
+[assembly: AssemblyVersion("1.12.0.0")]
+[assembly: AssemblyFileVersion("1.12.0.0")]
 
 namespace OPhoneMirror
 {
@@ -25,34 +25,233 @@ namespace OPhoneMirror
         public int WindowX;
     }
 
+    internal enum AppThemeMode
+    {
+        Auto,
+        Light,
+        Dark
+    }
+
+    internal sealed class ThemePalette
+    {
+        public bool IsDark;
+        public Color Background;
+        public Color Surface;
+        public Color SurfaceRaised;
+        public Color SurfaceMuted;
+        public Color SurfaceHover;
+        public Color SurfacePressed;
+        public Color Border;
+        public Color BorderStrong;
+        public Color Text;
+        public Color TextMuted;
+        public Color TextDim;
+        public Color Accent;
+        public Color AccentHover;
+        public Color AccentPressed;
+        public Color Success;
+        public Color Offline;
+        public Color Danger;
+    }
+
     internal static class UiTheme
     {
         public const string FontFamily = "Microsoft YaHei UI";
         public const string DisplayFontFamily = "Segoe UI";
-        public static readonly Color Background = Color.FromArgb(245, 245, 247);
-        public static readonly Color Surface = Color.FromArgb(255, 255, 255);
-        public static readonly Color SurfaceRaised = Color.FromArgb(250, 250, 252);
-        public static readonly Color SurfaceMuted = Color.FromArgb(238, 238, 241);
-        public static readonly Color SurfaceHover = Color.FromArgb(232, 232, 236);
-        public static readonly Color SurfacePressed = Color.FromArgb(218, 218, 223);
-        public static readonly Color Border = Color.FromArgb(222, 222, 226);
-        public static readonly Color BorderStrong = Color.FromArgb(190, 190, 196);
-        public static readonly Color Text = Color.FromArgb(29, 29, 31);
-        public static readonly Color TextMuted = Color.FromArgb(96, 96, 102);
-        public static readonly Color TextDim = Color.FromArgb(142, 142, 147);
-        public static readonly Color Accent = Color.FromArgb(0, 105, 210);
-        public static readonly Color AccentHover = Color.FromArgb(0, 113, 227);
-        public static readonly Color AccentPressed = Color.FromArgb(0, 91, 184);
-        public static readonly Color Success = Color.FromArgb(31, 122, 54);
-        public static readonly Color Offline = Color.FromArgb(134, 134, 139);
-        public static readonly Color Danger = Color.FromArgb(215, 0, 21);
+        private static ThemePalette current = CreateLight();
+
+        public static event Action<ThemePalette> ThemeChanged;
+        public static bool IsDark { get { return current.IsDark; } }
+        public static Color Background { get { return current.Background; } }
+        public static Color Surface { get { return current.Surface; } }
+        public static Color SurfaceRaised { get { return current.SurfaceRaised; } }
+        public static Color SurfaceMuted { get { return current.SurfaceMuted; } }
+        public static Color SurfaceHover { get { return current.SurfaceHover; } }
+        public static Color SurfacePressed { get { return current.SurfacePressed; } }
+        public static Color Border { get { return current.Border; } }
+        public static Color BorderStrong { get { return current.BorderStrong; } }
+        public static Color Text { get { return current.Text; } }
+        public static Color TextMuted { get { return current.TextMuted; } }
+        public static Color TextDim { get { return current.TextDim; } }
+        public static Color Accent { get { return current.Accent; } }
+        public static Color AccentHover { get { return current.AccentHover; } }
+        public static Color AccentPressed { get { return current.AccentPressed; } }
+        public static Color Success { get { return current.Success; } }
+        public static Color Offline { get { return current.Offline; } }
+        public static Color Danger { get { return current.Danger; } }
+
+        public static void SetDark(bool dark)
+        {
+            if (current.IsDark == dark)
+                return;
+            ThemePalette previous = current;
+            current = dark ? CreateDark() : CreateLight();
+            Action<ThemePalette> handler = ThemeChanged;
+            if (handler != null)
+                handler(previous);
+        }
+
+        public static Color Map(Color value, ThemePalette previous)
+        {
+            if (value == previous.Background) return Background;
+            if (value == previous.Surface) return Surface;
+            if (value == previous.SurfaceRaised) return SurfaceRaised;
+            if (value == previous.SurfaceMuted) return SurfaceMuted;
+            if (value == previous.SurfaceHover) return SurfaceHover;
+            if (value == previous.SurfacePressed) return SurfacePressed;
+            if (value == previous.Border) return Border;
+            if (value == previous.BorderStrong) return BorderStrong;
+            if (value == previous.Text) return Text;
+            if (value == previous.TextMuted) return TextMuted;
+            if (value == previous.TextDim) return TextDim;
+            if (value == previous.Accent) return Accent;
+            if (value == previous.AccentHover) return AccentHover;
+            if (value == previous.AccentPressed) return AccentPressed;
+            if (value == previous.Success) return Success;
+            if (value == previous.Offline) return Offline;
+            if (value == previous.Danger) return Danger;
+            return value;
+        }
+
+        public static void ApplyControlTree(Control root, ThemePalette previous)
+        {
+            root.BackColor = Map(root.BackColor, previous);
+            root.ForeColor = Map(root.ForeColor, previous);
+            Label label = root as Label;
+            if (label != null && label.BackColor == Color.Transparent && label.Parent != null)
+                label.BackColor = label.Parent.BackColor;
+
+            RoundedPanel rounded = root as RoundedPanel;
+            if (rounded != null)
+                rounded.BorderColor = Map(rounded.BorderColor, previous);
+
+            StatusDot status = root as StatusDot;
+            if (status != null)
+                status.DotColor = Map(status.DotColor, previous);
+
+            ModernButton button = root as ModernButton;
+            if (button != null)
+            {
+                button.BackColor = button.Kind == UiButtonKind.Primary ? Accent :
+                    button.Kind == UiButtonKind.Danger ? Danger : Surface;
+                button.ForeColor = button.Kind == UiButtonKind.Primary || button.Kind == UiButtonKind.Danger
+                    ? Color.White : Text;
+            }
+
+            DataGridView grid = root as DataGridView;
+            if (grid != null)
+            {
+                grid.BackgroundColor = Surface;
+                grid.GridColor = Border;
+                grid.ColumnHeadersDefaultCellStyle.BackColor = SurfaceRaised;
+                grid.ColumnHeadersDefaultCellStyle.ForeColor = Text;
+                grid.ColumnHeadersDefaultCellStyle.SelectionBackColor = SurfaceRaised;
+                grid.DefaultCellStyle.BackColor = Surface;
+                grid.DefaultCellStyle.ForeColor = Text;
+                grid.DefaultCellStyle.SelectionBackColor = IsDark
+                    ? Color.FromArgb(38, 72, 112)
+                    : Color.FromArgb(222, 237, 255);
+                grid.DefaultCellStyle.SelectionForeColor = Text;
+            }
+
+            foreach (Control child in root.Controls)
+                ApplyControlTree(child, previous);
+            root.Invalidate();
+        }
+
+        public static bool SystemUsesDarkTheme()
+        {
+            try
+            {
+                using (Microsoft.Win32.RegistryKey key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                    @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"))
+                {
+                    object value = key == null ? null : key.GetValue("AppsUseLightTheme");
+                    return value is int && (int)value == 0;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static ThemePalette CreateLight()
+        {
+            ThemePalette p = new ThemePalette();
+            p.IsDark = false;
+            p.Background = Color.FromArgb(245, 245, 247);
+            p.Surface = Color.White;
+            p.SurfaceRaised = Color.FromArgb(250, 250, 252);
+            p.SurfaceMuted = Color.FromArgb(238, 238, 241);
+            p.SurfaceHover = Color.FromArgb(232, 232, 236);
+            p.SurfacePressed = Color.FromArgb(218, 218, 223);
+            p.Border = Color.FromArgb(222, 222, 226);
+            p.BorderStrong = Color.FromArgb(190, 190, 196);
+            p.Text = Color.FromArgb(29, 29, 31);
+            p.TextMuted = Color.FromArgb(88, 88, 94);
+            p.TextDim = Color.FromArgb(134, 134, 139);
+            p.Accent = Color.FromArgb(0, 122, 255);
+            p.AccentHover = Color.FromArgb(0, 113, 227);
+            p.AccentPressed = Color.FromArgb(0, 97, 204);
+            p.Success = Color.FromArgb(31, 122, 54);
+            p.Offline = Color.FromArgb(134, 134, 139);
+            p.Danger = Color.FromArgb(215, 0, 21);
+            return p;
+        }
+
+        private static ThemePalette CreateDark()
+        {
+            ThemePalette p = new ThemePalette();
+            p.IsDark = true;
+            p.Background = Color.FromArgb(28, 28, 30);
+            p.Surface = Color.FromArgb(44, 44, 46);
+            p.SurfaceRaised = Color.FromArgb(58, 58, 60);
+            p.SurfaceMuted = Color.FromArgb(72, 72, 74);
+            p.SurfaceHover = Color.FromArgb(82, 82, 85);
+            p.SurfacePressed = Color.FromArgb(99, 99, 102);
+            p.Border = Color.FromArgb(72, 72, 74);
+            p.BorderStrong = Color.FromArgb(112, 112, 117);
+            p.Text = Color.FromArgb(245, 245, 247);
+            p.TextMuted = Color.FromArgb(199, 199, 204);
+            p.TextDim = Color.FromArgb(142, 142, 147);
+            p.Accent = Color.FromArgb(10, 132, 255);
+            p.AccentHover = Color.FromArgb(64, 156, 255);
+            p.AccentPressed = Color.FromArgb(0, 102, 204);
+            p.Success = Color.FromArgb(48, 209, 88);
+            p.Offline = Color.FromArgb(142, 142, 147);
+            p.Danger = Color.FromArgb(255, 69, 58);
+            return p;
+        }
+    }
+
+    internal static class WindowTheme
+    {
+        public static void Apply(Form form)
+        {
+            try
+            {
+                int enabled = UiTheme.IsDark ? 1 : 0;
+                IntPtr handle = form.Handle;
+                if (DwmSetWindowAttribute(handle, 20, ref enabled, sizeof(int)) != 0)
+                    DwmSetWindowAttribute(handle, 19, ref enabled, sizeof(int));
+            }
+            catch
+            {
+                // Older Windows versions may not support dark title bars.
+            }
+        }
+
+        [DllImport("dwmapi.dll")]
+        private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
     }
 
     internal enum UiButtonKind
     {
         Primary,
         Secondary,
-        Quiet
+        Quiet,
+        Danger
     }
 
     internal enum UiIcon
@@ -66,7 +265,9 @@ namespace OPhoneMirror
         Folder,
         ArrowUp,
         More,
-        Trash
+        Trash,
+        Stop,
+        ChevronUp
     }
 
     internal static class UiIconRenderer
@@ -139,6 +340,15 @@ namespace OPhoneMirror
                         new PointF(left + 18 * scale, top + 9 * scale)
                     });
                 }
+                else if (icon == UiIcon.ChevronUp)
+                {
+                    graphics.DrawLines(pen, new PointF[]
+                    {
+                        new PointF(left + 6 * scale, top + 15 * scale),
+                        new PointF(left + 12 * scale, top + 9 * scale),
+                        new PointF(left + 18 * scale, top + 15 * scale)
+                    });
+                }
                 else if (icon == UiIcon.Check)
                 {
                     graphics.DrawLines(pen, new PointF[]
@@ -189,6 +399,10 @@ namespace OPhoneMirror
                     graphics.DrawLine(pen, left + 10 * scale, top + 11 * scale, left + 10 * scale, top + 17 * scale);
                     graphics.DrawLine(pen, left + 14 * scale, top + 11 * scale, left + 14 * scale, top + 17 * scale);
                 }
+                else if (icon == UiIcon.Stop)
+                {
+                    graphics.FillRectangle(brush, left + 7 * scale, top + 7 * scale, 10 * scale, 10 * scale);
+                }
             }
         }
 
@@ -212,11 +426,23 @@ namespace OPhoneMirror
         private bool hovered;
         private bool pressed;
         private int cornerRadius = 10;
+        private readonly Timer iconAnimationTimer;
+        private bool animateIcon;
 
         public UiButtonKind Kind = UiButtonKind.Secondary;
         public UiIcon Icon = UiIcon.None;
         public bool IconOnly;
         public int IconSize = 20;
+        public bool AnimateIcon
+        {
+            get { return animateIcon; }
+            set
+            {
+                animateIcon = value;
+                iconAnimationTimer.Enabled = value;
+                Invalidate();
+            }
+        }
         public int CornerRadius
         {
             get { return cornerRadius; }
@@ -239,6 +465,16 @@ namespace OPhoneMirror
             UseVisualStyleBackColor = false;
             Cursor = Cursors.Hand;
             TabStop = true;
+            iconAnimationTimer = new Timer();
+            iconAnimationTimer.Interval = 40;
+            iconAnimationTimer.Tick += delegate { Invalidate(); };
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+                iconAnimationTimer.Dispose();
+            base.Dispose(disposing);
         }
 
         protected override void OnResize(EventArgs e)
@@ -327,6 +563,13 @@ namespace OPhoneMirror
                 stroke = fill;
                 content = Color.White;
             }
+            else if (Kind == UiButtonKind.Danger)
+            {
+                fill = pressed ? Color.FromArgb(190, UiTheme.Danger) :
+                    hovered ? Color.FromArgb(224, UiTheme.Danger) : UiTheme.Danger;
+                stroke = fill;
+                content = Color.White;
+            }
             else if (Kind == UiButtonKind.Quiet)
             {
                 fill = pressed ? UiTheme.SurfacePressed : hovered ? UiTheme.SurfaceHover : BackColor;
@@ -360,7 +603,19 @@ namespace OPhoneMirror
                 {
                     iconBounds = new Rectangle(13, (Height - size) / 2, size, size);
                 }
+                GraphicsState iconState = null;
+                if (AnimateIcon)
+                {
+                    iconState = e.Graphics.Save();
+                    float centerX = iconBounds.Left + iconBounds.Width / 2F;
+                    float centerY = iconBounds.Top + iconBounds.Height / 2F;
+                    e.Graphics.TranslateTransform(centerX, centerY);
+                    e.Graphics.RotateTransform((Environment.TickCount / 3F) % 360F);
+                    e.Graphics.TranslateTransform(-centerX, -centerY);
+                }
                 UiIconRenderer.Draw(e.Graphics, Icon, iconBounds, content);
+                if (iconState != null)
+                    e.Graphics.Restore(iconState);
             }
 
             if (!IconOnly && !string.IsNullOrEmpty(Text))
@@ -565,15 +820,21 @@ namespace OPhoneMirror
 
         public string FirstText = string.Empty;
         public string SecondText = string.Empty;
+        public string ThirdText = string.Empty;
         public event EventHandler SelectedIndexChanged;
+
+        private int ItemCount
+        {
+            get { return string.IsNullOrEmpty(ThirdText) ? 2 : 3; }
+        }
 
         public int SelectedIndex
         {
             get { return selectedIndex; }
             set
             {
-                int normalized = value == 1 ? 1 : 0;
-                AccessibleDescription = normalized == 0 ? FirstText : SecondText;
+                int normalized = Math.Max(0, Math.Min(ItemCount - 1, value));
+                AccessibleDescription = ItemText(normalized);
                 if (selectedIndex == normalized)
                     return;
                 selectedIndex = normalized;
@@ -601,7 +862,7 @@ namespace OPhoneMirror
 
         protected override void OnMouseMove(MouseEventArgs e)
         {
-            int next = e.X < Width / 2 ? 0 : 1;
+            int next = Math.Min(ItemCount - 1, Math.Max(0, e.X * ItemCount / Math.Max(1, Width)));
             if (next != hoveredIndex)
             {
                 hoveredIndex = next;
@@ -619,7 +880,7 @@ namespace OPhoneMirror
 
         protected override void OnMouseClick(MouseEventArgs e)
         {
-            SelectedIndex = e.X < Width / 2 ? 0 : 1;
+            SelectedIndex = Math.Min(ItemCount - 1, Math.Max(0, e.X * ItemCount / Math.Max(1, Width)));
             Focus();
             base.OnMouseClick(e);
         }
@@ -628,17 +889,17 @@ namespace OPhoneMirror
         {
             if (e.KeyCode == Keys.Left || e.KeyCode == Keys.Up)
             {
-                SelectedIndex = 0;
+                SelectedIndex = Math.Max(0, SelectedIndex - 1);
                 e.Handled = true;
             }
             else if (e.KeyCode == Keys.Right || e.KeyCode == Keys.Down)
             {
-                SelectedIndex = 1;
+                SelectedIndex = Math.Min(ItemCount - 1, SelectedIndex + 1);
                 e.Handled = true;
             }
             else if (e.KeyCode == Keys.Space || e.KeyCode == Keys.Enter)
             {
-                SelectedIndex = SelectedIndex == 0 ? 1 : 0;
+                SelectedIndex = (SelectedIndex + 1) % ItemCount;
                 e.Handled = true;
                 e.SuppressKeyPress = true;
             }
@@ -669,12 +930,13 @@ namespace OPhoneMirror
                 e.Graphics.DrawPath(borderPen, outer);
             }
 
-            int half = Width / 2;
-            for (int index = 0; index < 2; index++)
+            int count = ItemCount;
+            int itemWidth = Width / count;
+            for (int index = 0; index < count; index++)
             {
-                Rectangle item = index == 0
-                    ? new Rectangle(3, 3, half - 5, Height - 7)
-                    : new Rectangle(half + 2, 3, Width - half - 5, Height - 7);
+                int itemLeft = index * itemWidth + 3;
+                int itemRight = index == count - 1 ? Width - 3 : (index + 1) * itemWidth - 2;
+                Rectangle item = new Rectangle(itemLeft, 3, Math.Max(1, itemRight - itemLeft), Height - 7);
                 Color fill = index == selectedIndex
                     ? UiTheme.Accent
                     : index == hoveredIndex ? UiTheme.SurfaceRaised : UiTheme.SurfaceMuted;
@@ -684,7 +946,7 @@ namespace OPhoneMirror
 
                 TextRenderer.DrawText(
                     e.Graphics,
-                    index == 0 ? FirstText : SecondText,
+                    ItemText(index),
                     Font,
                     item,
                     index == selectedIndex ? Color.White : UiTheme.TextMuted,
@@ -698,6 +960,13 @@ namespace OPhoneMirror
                 using (Pen focusPen = new Pen(UiTheme.Accent, 2))
                     e.Graphics.DrawPath(focusPen, focusPath);
             }
+        }
+
+        private string ItemText(int index)
+        {
+            if (index == 0) return FirstText;
+            if (index == 1) return SecondText;
+            return ThirdText;
         }
     }
 
@@ -869,7 +1138,11 @@ namespace OPhoneMirror
             if (device == null)
                 return;
             AccessibleName = device.Name;
-            AccessibleDescription = device.Model + "，" + (device.IsOnline ? "USB 已连接" : "未连接");
+            string state = device.MirrorStarting ? "正在启动投屏" :
+                device.MirrorStopping ? "正在停止投屏" :
+                device.MirrorActive ? "正在投屏" :
+                device.IsOnline ? "USB 已连接" : "未连接";
+            AccessibleDescription = device.Model + "，" + state;
         }
 
         protected override void OnMouseEnter(EventArgs e)
@@ -924,7 +1197,7 @@ namespace OPhoneMirror
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
             Rectangle bounds = new Rectangle(0, 0, Width - 1, Height - 1);
             Color fill = Selected && !ShowsChevron
-                ? Color.FromArgb(238, 246, 255)
+                ? (UiTheme.IsDark ? Color.FromArgb(38, 72, 112) : Color.FromArgb(238, 246, 255))
                 : hovered ? UiTheme.SurfaceRaised : UiTheme.Surface;
             using (GraphicsPath path = RoundedPanel.CreateRoundedRect(bounds, 12))
             using (SolidBrush fillBrush = new SolidBrush(fill))
@@ -961,14 +1234,20 @@ namespace OPhoneMirror
             TextRenderer.DrawText(e.Graphics, device.Model, Font, modelBounds, UiTheme.TextMuted,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
 
-            string status = device.IsOnline ? "已连接" : "未连接";
+            string status = device.MirrorStarting ? "连接中" :
+                device.MirrorStopping ? "停止中" :
+                device.MirrorActive ? "投屏中" :
+                device.IsOnline ? "已连接" : "未连接";
+            Color statusColor = device.MirrorActive || device.MirrorStarting
+                ? UiTheme.Accent
+                : device.IsOnline ? UiTheme.Success : UiTheme.TextDim;
             int statusRight = ShowsChevron ? Width - 46 : Selected ? Width - 48 : Width - 18;
-            int statusWidth = 62;
+            int statusWidth = 70;
             Rectangle statusBounds = new Rectangle(statusRight - statusWidth, 0, statusWidth, Height);
             TextRenderer.DrawText(e.Graphics, status, Font, statusBounds,
-                device.IsOnline ? UiTheme.Success : UiTheme.TextDim,
+                statusColor,
                 TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-            using (SolidBrush dot = new SolidBrush(device.IsOnline ? UiTheme.Success : UiTheme.Offline))
+            using (SolidBrush dot = new SolidBrush(statusColor))
                 e.Graphics.FillEllipse(dot, statusBounds.Left - 10, (Height - 7) / 2, 7, 7);
 
             if (ShowsChevron)
@@ -997,9 +1276,12 @@ namespace OPhoneMirror
         public string Model;
         public string Serial;
         public bool IsOnline;
+        public bool MirrorActive;
         public int WindowX;
         public Process MirrorProcess;
         public int MirrorProcessId;
+        public bool MirrorStarting;
+        public bool MirrorStopping;
         public int ScreenPowerRequestId;
         public bool ScreenOffApplied;
         public int TopMostRequestId;
@@ -1068,15 +1350,81 @@ namespace OPhoneMirror
         }
     }
 
+    internal sealed class DevicePickerForm : Form
+    {
+        public int LastDismissedTick;
+
+        public DevicePickerForm()
+        {
+            FormBorderStyle = FormBorderStyle.None;
+            ShowInTaskbar = false;
+            StartPosition = FormStartPosition.Manual;
+            BackColor = UiTheme.Surface;
+            ClientSize = new Size(532, 128);
+            KeyPreview = true;
+            Deactivate += delegate
+            {
+                LastDismissedTick = Environment.TickCount;
+                Hide();
+            };
+            KeyDown += delegate(object sender, KeyEventArgs e)
+            {
+                if (e.KeyCode == Keys.Escape)
+                {
+                    Hide();
+                    e.Handled = true;
+                    e.SuppressKeyPress = true;
+                }
+            };
+        }
+
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                CreateParams parameters = base.CreateParams;
+                parameters.ClassStyle |= 0x00020000;
+                return parameters;
+            }
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            if (Width < 2 || Height < 2)
+                return;
+            Region previous = Region;
+            using (GraphicsPath path = RoundedPanel.CreateRoundedRect(
+                new Rectangle(0, 0, Width, Height), 16))
+                Region = new Region(path);
+            if (previous != null)
+                previous.Dispose();
+        }
+
+        public void ShowFor(Control anchor, IWin32Window owner)
+        {
+            Point target = anchor.PointToScreen(new Point(0, anchor.Height + 6));
+            Rectangle working = Screen.FromControl(anchor).WorkingArea;
+            int x = Math.Max(working.Left + 8, Math.Min(target.X, working.Right - Width - 8));
+            int y = target.Y + Height <= working.Bottom - 8
+                ? target.Y
+                : anchor.PointToScreen(new Point(0, -Height - 6)).Y;
+            Location = new Point(x, y);
+            BackColor = UiTheme.Surface;
+            WindowTheme.Apply(this);
+            Show(owner);
+            BringToFront();
+            Activate();
+        }
+    }
+
     internal sealed class MainForm : Form
     {
-        private readonly Color background = UiTheme.Background;
-        private readonly Color card = UiTheme.Surface;
-        private readonly Color foreground = UiTheme.Text;
-        private readonly Color muted = UiTheme.TextMuted;
-        private readonly Color accent = UiTheme.Accent;
-        private readonly Color online = UiTheme.Success;
-        private readonly Color offline = UiTheme.Offline;
+        private Color background { get { return UiTheme.Background; } }
+        private Color card { get { return UiTheme.Surface; } }
+        private Color foreground { get { return UiTheme.Text; } }
+        private Color muted { get { return UiTheme.TextMuted; } }
+        private Color accent { get { return UiTheme.Accent; } }
 
         private readonly string appDirectory;
         private readonly string adbPath;
@@ -1088,12 +1436,13 @@ namespace OPhoneMirror
         private readonly Timer restartTimer;
         private readonly Label footerStatus;
         private readonly ModeSelector keyboardModeSelector;
+        private readonly ModeSelector themeModeSelector;
         private readonly ToggleSwitch screenOffToggle;
         private readonly ToggleSwitch alwaysOnTopToggle;
         private readonly DeviceSelectRow activeDeviceRow;
         private readonly DeviceSelectRow device1Row;
         private readonly DeviceSelectRow device2Row;
-        private readonly RoundedPanel deviceListPanel;
+        private readonly DevicePickerForm devicePicker;
         private readonly RoundedPanel settingsPanel;
         private readonly ModernButton launchButton;
         private readonly ModernButton transferButton;
@@ -1102,9 +1451,11 @@ namespace OPhoneMirror
         private readonly string screenOffSettingsPath;
         private readonly string alwaysOnTopSettingsPath;
         private readonly string selectedDeviceSettingsPath;
+        private readonly string themeSettingsPath;
         private readonly List<DeviceCard> pendingRestart = new List<DeviceCard>();
         private readonly KeyboardCapture keyboardCapture;
         private int keyboardMode;
+        private AppThemeMode themeMode;
         private int refreshInProgress;
 
         public MainForm()
@@ -1125,7 +1476,12 @@ namespace OPhoneMirror
             selectedDeviceSettingsPath = Path.Combine(
                 Path.GetDirectoryName(settingsPath),
                 "selected-device.txt");
+            themeSettingsPath = Path.Combine(
+                Path.GetDirectoryName(settingsPath),
+                "theme-mode.txt");
             keyboardMode = LoadKeyboardMode();
+            themeMode = LoadThemeMode();
+            UiTheme.SetDark(ThemeShouldBeDark());
             toolTip = new ToolTip();
             toolTip.AutoPopDelay = 5000;
             toolTip.InitialDelay = 450;
@@ -1133,8 +1489,8 @@ namespace OPhoneMirror
 
             Text = "OPhoneMirror · 手机有线投屏";
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(700, 530);
-            MinimumSize = new Size(716, 569);
+            ClientSize = new Size(620, 520);
+            MinimumSize = new Size(636, 559);
             BackColor = background;
             ForeColor = foreground;
             Font = new Font(UiTheme.FontFamily, 9F, FontStyle.Regular, GraphicsUnit.Point);
@@ -1145,22 +1501,14 @@ namespace OPhoneMirror
 
             Label title = new Label();
             title.Text = "OPhoneMirror";
-            title.Font = new Font(UiTheme.DisplayFontFamily, 23F, FontStyle.Bold);
+            title.Font = new Font(UiTheme.DisplayFontFamily, 21F, FontStyle.Bold);
             title.ForeColor = foreground;
             title.AutoSize = true;
-            title.Location = new Point(32, 22);
+            title.Location = new Point(28, 18);
             Controls.Add(title);
 
-            Label subtitle = new Label();
-            subtitle.Text = "Android 投屏与控制";
-            subtitle.Font = new Font(UiTheme.FontFamily, 9.5F);
-            subtitle.ForeColor = muted;
-            subtitle.AutoSize = true;
-            subtitle.Location = new Point(35, 63);
-            Controls.Add(subtitle);
-
             ModernButton refresh = MakeIconButton(UiIcon.Refresh, "刷新设备", UiButtonKind.Secondary);
-            refresh.Location = new Point(628, 27);
+            refresh.Location = new Point(552, 18);
             refresh.Size = new Size(40, 40);
             refresh.CornerRadius = 20;
             refresh.Anchor = AnchorStyles.Top | AnchorStyles.Right;
@@ -1176,45 +1524,45 @@ namespace OPhoneMirror
             RoundedPanel devicePanel = new RoundedPanel();
             devicePanel.Name = "activeDevicePanel";
             devicePanel.BackColor = card;
-            devicePanel.BorderColor = Color.FromArgb(232, 232, 236);
+            devicePanel.BorderColor = UiTheme.Border;
             devicePanel.Shadow = true;
-            devicePanel.Location = new Point(32, 94);
-            devicePanel.Size = new Size(636, 190);
+            devicePanel.Location = new Point(28, 70);
+            devicePanel.Size = new Size(564, 178);
             Controls.Add(devicePanel);
 
             activeDeviceRow = new DeviceSelectRow();
             activeDeviceRow.Name = "activeDeviceSelector";
             activeDeviceRow.Device = activeDevice;
             activeDeviceRow.ShowsChevron = true;
-            activeDeviceRow.Location = new Point(18, 16);
-            activeDeviceRow.Size = new Size(600, 66);
+            activeDeviceRow.Location = new Point(16, 14);
+            activeDeviceRow.Size = new Size(532, 64);
             activeDeviceRow.DeviceChosen += delegate { ToggleDeviceList(); };
             devicePanel.Controls.Add(activeDeviceRow);
             toolTip.SetToolTip(activeDeviceRow, "选择设备");
 
             Panel deviceDivider = new Panel();
             deviceDivider.BackColor = UiTheme.Border;
-            deviceDivider.Location = new Point(24, 94);
-            deviceDivider.Size = new Size(588, 1);
+            deviceDivider.Location = new Point(24, 88);
+            deviceDivider.Size = new Size(516, 1);
             devicePanel.Controls.Add(deviceDivider);
 
-            launchButton = MakeIconButton(UiIcon.Mirror, "启动有线投屏", UiButtonKind.Primary);
-            launchButton.Location = new Point(258, 112);
-            launchButton.Size = new Size(56, 52);
-            launchButton.CornerRadius = 15;
+            launchButton = MakeActionButton(UiIcon.Mirror, "投屏", UiButtonKind.Primary);
+            launchButton.Location = new Point(148, 105);
+            launchButton.Size = new Size(126, 48);
+            launchButton.CornerRadius = 14;
             launchButton.Enabled = false;
             launchButton.Click += delegate
             {
                 CloseDeviceList();
-                LaunchDevice(activeDevice);
+                ToggleMirror(activeDevice);
             };
             devicePanel.Controls.Add(launchButton);
             toolTip.SetToolTip(launchButton, "启动有线投屏");
 
-            transferButton = MakeIconButton(UiIcon.Transfer, "文件互传", UiButtonKind.Secondary);
-            transferButton.Location = new Point(322, 112);
-            transferButton.Size = new Size(56, 52);
-            transferButton.CornerRadius = 15;
+            transferButton = MakeActionButton(UiIcon.Transfer, "文件", UiButtonKind.Secondary);
+            transferButton.Location = new Point(290, 105);
+            transferButton.Size = new Size(126, 48);
+            transferButton.CornerRadius = 14;
             transferButton.Enabled = false;
             transferButton.Click += delegate
             {
@@ -1228,10 +1576,10 @@ namespace OPhoneMirror
             RoundedPanel info = settingsPanel;
             info.Name = "optionsPanel";
             info.BackColor = card;
-            info.BorderColor = Color.FromArgb(232, 232, 236);
+            info.BorderColor = UiTheme.Border;
             info.Shadow = true;
-            info.Location = new Point(32, 306);
-            info.Size = new Size(636, 154);
+            info.Location = new Point(28, 264);
+            info.Size = new Size(564, 208);
             info.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
 
             Label infoTitle = new Label();
@@ -1239,13 +1587,13 @@ namespace OPhoneMirror
             infoTitle.ForeColor = foreground;
             infoTitle.Font = new Font(UiTheme.FontFamily, 11F, FontStyle.Bold);
             infoTitle.AutoSize = true;
-            infoTitle.Location = new Point(22, 16);
+            infoTitle.Location = new Point(22, 13);
             info.Controls.Add(infoTitle);
 
             screenOffToggle = new ToggleSwitch();
             screenOffToggle.Text = "仅熄手机屏幕";
-            screenOffToggle.Location = new Point(18, 49);
-            screenOffToggle.Size = new Size(180, 40);
+            screenOffToggle.Location = new Point(18, 39);
+            screenOffToggle.Size = new Size(528, 38);
             screenOffToggle.Checked = LoadScreenOffSetting();
             screenOffToggle.CheckedChanged += ScreenOffSettingChanged;
             info.Controls.Add(screenOffToggle);
@@ -1253,79 +1601,91 @@ namespace OPhoneMirror
 
             alwaysOnTopToggle = new ToggleSwitch();
             alwaysOnTopToggle.Text = "保持在最顶层";
-            alwaysOnTopToggle.Location = new Point(218, 49);
-            alwaysOnTopToggle.Size = new Size(184, 40);
+            alwaysOnTopToggle.Location = new Point(18, 79);
+            alwaysOnTopToggle.Size = new Size(528, 38);
             alwaysOnTopToggle.Checked = LoadAlwaysOnTopSetting();
             alwaysOnTopToggle.CheckedChanged += AlwaysOnTopSettingChanged;
             info.Controls.Add(alwaysOnTopToggle);
             toolTip.SetToolTip(alwaysOnTopToggle, "让投屏窗口保持在其他窗口上方");
 
-            Panel settingsDivider = new Panel();
-            settingsDivider.BackColor = UiTheme.Border;
-            settingsDivider.Location = new Point(22, 99);
-            settingsDivider.Size = new Size(592, 1);
-            info.Controls.Add(settingsDivider);
+            for (int dividerIndex = 0; dividerIndex < 3; dividerIndex++)
+            {
+                Panel divider = new Panel();
+                divider.BackColor = UiTheme.Border;
+                divider.Location = new Point(22, 78 + dividerIndex * 40);
+                divider.Size = new Size(520, 1);
+                info.Controls.Add(divider);
+            }
 
             Label keyboardLabel = new Label();
             keyboardLabel.Text = "键盘";
             keyboardLabel.ForeColor = muted;
             keyboardLabel.AutoSize = true;
-            keyboardLabel.Location = new Point(24, 117);
+            keyboardLabel.Location = new Point(24, 131);
             info.Controls.Add(keyboardLabel);
 
             keyboardModeSelector = new ModeSelector();
             keyboardModeSelector.FirstText = "短语";
             keyboardModeSelector.SecondText = "数字选词";
-            keyboardModeSelector.Location = new Point(84, 108);
-            keyboardModeSelector.Size = new Size(286, 34);
+            keyboardModeSelector.Location = new Point(294, 120);
+            keyboardModeSelector.Size = new Size(252, 34);
             keyboardModeSelector.SelectedIndex = keyboardMode;
             keyboardModeSelector.SelectedIndexChanged += KeyboardModeChanged;
             info.Controls.Add(keyboardModeSelector);
             toolTip.SetToolTip(keyboardModeSelector, "短语：Shift 切换中英；数字选词：Shift+Space 切换中英");
+
+            Label themeLabel = new Label();
+            themeLabel.Text = "外观";
+            themeLabel.ForeColor = muted;
+            themeLabel.AutoSize = true;
+            themeLabel.Location = new Point(24, 171);
+            info.Controls.Add(themeLabel);
+
+            themeModeSelector = new ModeSelector();
+            themeModeSelector.AccessibleName = "外观主题";
+            themeModeSelector.FirstText = "自动";
+            themeModeSelector.SecondText = "浅色";
+            themeModeSelector.ThirdText = "深色";
+            themeModeSelector.Location = new Point(294, 160);
+            themeModeSelector.Size = new Size(252, 34);
+            themeModeSelector.SelectedIndex = (int)themeMode;
+            themeModeSelector.SelectedIndexChanged += ThemeModeChanged;
+            info.Controls.Add(themeModeSelector);
             Controls.Add(info);
 
-            deviceListPanel = new RoundedPanel();
-            deviceListPanel.Name = "deviceList";
-            deviceListPanel.BackColor = card;
-            deviceListPanel.BorderColor = UiTheme.Border;
-            deviceListPanel.CornerRadius = 16;
-            deviceListPanel.Shadow = true;
-            deviceListPanel.Location = new Point(50, 294);
-            deviceListPanel.Size = new Size(600, 132);
-            deviceListPanel.Visible = false;
+            devicePicker = new DevicePickerForm();
+            devicePicker.Size = new Size(532, 128);
 
             device1Row = new DeviceSelectRow();
             device1Row.Device = device1;
             device1Row.Selected = activeDevice == device1;
-            device1Row.Location = new Point(10, 9);
-            device1Row.Size = new Size(576, 54);
+            device1Row.Location = new Point(8, 7);
+            device1Row.Size = new Size(516, 55);
             device1Row.DeviceChosen += delegate { SelectDevice(device1); };
-            deviceListPanel.Controls.Add(device1Row);
+            devicePicker.Controls.Add(device1Row);
 
             device2Row = new DeviceSelectRow();
             device2Row.Device = device2;
             device2Row.Selected = activeDevice == device2;
-            device2Row.Location = new Point(10, 67);
-            device2Row.Size = new Size(576, 54);
+            device2Row.Location = new Point(8, 66);
+            device2Row.Size = new Size(516, 55);
             device2Row.DeviceChosen += delegate { SelectDevice(device2); };
-            deviceListPanel.Controls.Add(device2Row);
-            Controls.Add(deviceListPanel);
-            deviceListPanel.BringToFront();
+            devicePicker.Controls.Add(device2Row);
 
             footerStatus = new Label();
             footerStatus.Text = "正在检查设备…";
             footerStatus.ForeColor = muted;
             footerStatus.AutoSize = true;
-            footerStatus.Location = new Point(36, 496);
+            footerStatus.Location = new Point(32, 493);
             footerStatus.Anchor = AnchorStyles.Left | AnchorStyles.Bottom;
             Controls.Add(footerStatus);
 
             Label version = new Label();
-            version.Text = "OPhoneMirror 1.11.0 · scrcpy 4.1";
+            version.Text = "v1.12.0";
             version.ForeColor = muted;
             version.AutoSize = false;
-            version.Location = new Point(420, 490);
-            version.Size = new Size(248, 24);
+            version.Location = new Point(512, 488);
+            version.Size = new Size(80, 24);
             version.TextAlign = ContentAlignment.MiddleRight;
             version.Anchor = AnchorStyles.Right | AnchorStyles.Bottom;
             Controls.Add(version);
@@ -1343,23 +1703,31 @@ namespace OPhoneMirror
             {
                 StopScreenControl(device1, true);
                 StopScreenControl(device2, true);
+                UiTheme.ThemeChanged -= ApplyTheme;
+                Microsoft.Win32.SystemEvents.UserPreferenceChanged -= SystemThemeChanged;
+                devicePicker.Close();
+                devicePicker.Dispose();
                 keyboardCapture.Dispose();
                 toolTip.Dispose();
             };
             Shown += delegate
             {
+                WindowTheme.Apply(this);
                 RefreshDevices();
+                AdoptExistingMirrorsAsync();
                 refreshTimer.Start();
             };
             KeyDown += delegate(object sender, KeyEventArgs e)
             {
-                if (e.KeyCode == Keys.Escape && deviceListPanel.Visible)
+                if (e.KeyCode == Keys.Escape && devicePicker.Visible)
                 {
                     CloseDeviceList();
                     e.Handled = true;
                     e.SuppressKeyPress = true;
                 }
             };
+            UiTheme.ThemeChanged += ApplyTheme;
+            Microsoft.Win32.SystemEvents.UserPreferenceChanged += SystemThemeChanged;
         }
 
         internal bool HasConfiguredDevices
@@ -1447,32 +1815,45 @@ namespace OPhoneMirror
             b.IconOnly = true;
             b.IconSize = 22;
             b.Kind = kind;
-            b.BackColor = kind == UiButtonKind.Primary ? accent : card;
-            b.ForeColor = kind == UiButtonKind.Primary ? Color.White : foreground;
+            b.BackColor = kind == UiButtonKind.Primary ? accent :
+                kind == UiButtonKind.Danger ? UiTheme.Danger : card;
+            b.ForeColor = kind == UiButtonKind.Primary || kind == UiButtonKind.Danger
+                ? Color.White : foreground;
             b.Font = new Font(UiTheme.FontFamily, 9F, FontStyle.Regular);
             return b;
         }
 
+        private ModernButton MakeActionButton(UiIcon icon, string text, UiButtonKind kind)
+        {
+            ModernButton button = MakeIconButton(icon, text, kind);
+            button.IconOnly = false;
+            button.Text = text;
+            button.Font = new Font(UiTheme.FontFamily, 9.5F, FontStyle.Bold);
+            return button;
+        }
+
         private void ToggleDeviceList()
         {
-            deviceListPanel.Visible = !deviceListPanel.Visible;
-            settingsPanel.Visible = !deviceListPanel.Visible;
+            int sinceDismissed = unchecked(Environment.TickCount - devicePicker.LastDismissedTick);
+            if (!devicePicker.Visible && sinceDismissed >= 0 && sinceDismissed < 250)
+                return;
+            if (devicePicker.Visible)
+            {
+                CloseDeviceList();
+                return;
+            }
             activeDeviceRow.AccessibleDescription = activeDevice.Model + "，" +
                 (activeDevice.IsOnline ? "USB 已连接" : "未连接") + "，" +
-                (deviceListPanel.Visible ? "设备列表已展开" : "设备列表已折叠");
-            if (deviceListPanel.Visible)
-            {
-                deviceListPanel.BringToFront();
-                (activeDevice == device1 ? device1Row : device2Row).Focus();
-            }
+                "设备列表已展开";
+            devicePicker.ShowFor(activeDeviceRow, this);
+            (activeDevice == device1 ? device1Row : device2Row).Focus();
         }
 
         private void CloseDeviceList()
         {
-            if (!deviceListPanel.Visible)
+            if (!devicePicker.Visible)
                 return;
-            deviceListPanel.Visible = false;
-            settingsPanel.Visible = true;
+            devicePicker.Hide();
             activeDeviceRow.AccessibleDescription = activeDevice.Model + "，" +
                 (activeDevice.IsOnline ? "USB 已连接" : "未连接") + "，设备列表已折叠";
         }
@@ -1485,11 +1866,11 @@ namespace OPhoneMirror
             device2Row.Selected = device == device2;
             device1Row.Invalidate();
             device2Row.Invalidate();
-            launchButton.Enabled = device.IsOnline;
+            UpdateMirrorAction(device);
             transferButton.Enabled = device.IsOnline;
             SaveSelectedDeviceIndex(device == device2 ? 1 : 0);
-            CloseDeviceList();
-            footerStatus.Text = device.Name + (device.IsOnline ? " 已连接" : " 未连接");
+            devicePicker.Hide();
+            footerStatus.Text = DeviceStatusText(device);
             activeDeviceRow.Focus();
         }
 
@@ -1516,6 +1897,68 @@ namespace OPhoneMirror
             {
                 // The selector still works for this session if settings cannot be persisted.
             }
+        }
+
+        private AppThemeMode LoadThemeMode()
+        {
+            try
+            {
+                string value = File.ReadAllText(themeSettingsPath).Trim();
+                if (value == "1") return AppThemeMode.Light;
+                if (value == "2") return AppThemeMode.Dark;
+            }
+            catch { }
+            return AppThemeMode.Auto;
+        }
+
+        private void SaveThemeMode()
+        {
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(themeSettingsPath));
+                File.WriteAllText(themeSettingsPath, ((int)themeMode).ToString(), Encoding.UTF8);
+            }
+            catch { }
+        }
+
+        private bool ThemeShouldBeDark()
+        {
+            if (themeMode == AppThemeMode.Dark) return true;
+            if (themeMode == AppThemeMode.Light) return false;
+            return UiTheme.SystemUsesDarkTheme();
+        }
+
+        private void ThemeModeChanged(object sender, EventArgs e)
+        {
+            themeMode = (AppThemeMode)themeModeSelector.SelectedIndex;
+            SaveThemeMode();
+            UiTheme.SetDark(ThemeShouldBeDark());
+            footerStatus.Text = "外观已切换为“" + themeModeSelector.AccessibleDescription + "”";
+        }
+
+        private void SystemThemeChanged(object sender, Microsoft.Win32.UserPreferenceChangedEventArgs e)
+        {
+            if (themeMode != AppThemeMode.Auto || IsDisposed)
+                return;
+            try
+            {
+                BeginInvoke((MethodInvoker)delegate { UiTheme.SetDark(ThemeShouldBeDark()); });
+            }
+            catch { }
+        }
+
+        private void ApplyTheme(ThemePalette previous)
+        {
+            UiTheme.ApplyControlTree(this, previous);
+            UiTheme.ApplyControlTree(devicePicker, previous);
+            BackColor = UiTheme.Background;
+            ForeColor = UiTheme.Text;
+            settingsPanel.BorderColor = UiTheme.Border;
+            devicePicker.BackColor = UiTheme.Surface;
+            WindowTheme.Apply(this);
+            if (devicePicker.Visible)
+                WindowTheme.Apply(devicePicker);
+            Invalidate(true);
         }
 
         private void RefreshDevices()
@@ -1597,17 +2040,243 @@ namespace OPhoneMirror
         private void SetDeviceState(DeviceCard device, bool connected)
         {
             device.IsOnline = connected;
+            UpdateDeviceRows(device);
+            if (device == activeDevice)
+            {
+                UpdateMirrorAction(device);
+                transferButton.Enabled = connected;
+            }
+        }
+
+        private string DeviceStatusText(DeviceCard device)
+        {
+            if (device.MirrorStarting) return device.Name + " 正在启动投屏…";
+            if (device.MirrorStopping) return device.Name + " 正在停止投屏…";
+            if (device.MirrorActive) return device.Name + " 正在投屏";
+            return device.Name + (device.IsOnline ? " 已就绪" : " 未连接");
+        }
+
+        private void UpdateDeviceRows(DeviceCard device)
+        {
             if (device == device1)
                 device1Row.UpdateStatus();
             else if (device == device2)
                 device2Row.UpdateStatus();
-
             if (device == activeDevice)
-            {
                 activeDeviceRow.UpdateStatus();
-                launchButton.Enabled = connected;
-                transferButton.Enabled = connected;
+        }
+
+        private void UpdateMirrorAction(DeviceCard device)
+        {
+            if (device != activeDevice)
+                return;
+
+            if (device.MirrorStarting)
+            {
+                launchButton.Text = "连接中";
+                launchButton.Icon = UiIcon.Refresh;
+                launchButton.Kind = UiButtonKind.Primary;
+                launchButton.Enabled = false;
+                launchButton.AnimateIcon = true;
+                launchButton.AccessibleName = "正在启动投屏";
             }
+            else if (device.MirrorStopping)
+            {
+                launchButton.Text = "停止中";
+                launchButton.Icon = UiIcon.Stop;
+                launchButton.Kind = UiButtonKind.Secondary;
+                launchButton.Enabled = false;
+                launchButton.AnimateIcon = false;
+                launchButton.AccessibleName = "正在停止投屏";
+            }
+            else if (device.MirrorActive)
+            {
+                launchButton.Text = "停止";
+                launchButton.Icon = UiIcon.Stop;
+                launchButton.Kind = UiButtonKind.Secondary;
+                launchButton.Enabled = true;
+                launchButton.AnimateIcon = false;
+                launchButton.AccessibleName = "停止投屏";
+            }
+            else
+            {
+                launchButton.Text = "投屏";
+                launchButton.Icon = UiIcon.Mirror;
+                launchButton.Kind = UiButtonKind.Primary;
+                launchButton.Enabled = device.IsOnline;
+                launchButton.AnimateIcon = false;
+                launchButton.AccessibleName = "启动有线投屏";
+            }
+            launchButton.BackColor = launchButton.Kind == UiButtonKind.Primary ? UiTheme.Accent : UiTheme.Surface;
+            launchButton.ForeColor = launchButton.Kind == UiButtonKind.Primary ? Color.White : UiTheme.Text;
+            launchButton.Invalidate();
+            UpdateDeviceRows(device);
+        }
+
+        private void ToggleMirror(DeviceCard device)
+        {
+            if (device.MirrorStarting || device.MirrorStopping)
+                return;
+
+            List<Process> running = FindMirrorProcesses(device);
+            if (running.Count > 0 && !device.MirrorActive)
+            {
+                Process adopted = running[0];
+                for (int i = 1; i < running.Count; i++)
+                    running[i].Dispose();
+                AttachMirrorProcess(device, adopted, true);
+                footerStatus.Text = device.Name + " 已在投屏；再次点击可停止";
+                return;
+            }
+
+            if (device.MirrorActive || running.Count > 0)
+            {
+                StopDeviceMirror(device, running);
+                return;
+            }
+
+            LaunchDevice(device);
+        }
+
+        private void StopDeviceMirror(DeviceCard device, List<Process> running)
+        {
+            device.MirrorStarting = false;
+            device.MirrorStopping = true;
+            UpdateMirrorAction(device);
+            footerStatus.Text = device.Name + " 正在停止投屏…";
+            StopScreenControl(device, true);
+            System.Threading.Interlocked.Increment(ref device.TopMostRequestId);
+
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                StopMirrorProcesses(running, false);
+                System.Threading.Thread.Sleep(350);
+                StopMirrorProcesses(FindMirrorProcesses(device), true);
+                if (IsDisposed)
+                    return;
+                try
+                {
+                    BeginInvoke((MethodInvoker)delegate
+                    {
+                        device.MirrorProcess = null;
+                        device.MirrorProcessId = 0;
+                        device.MirrorActive = false;
+                        device.MirrorStopping = false;
+                        UpdateMirrorAction(device);
+                        footerStatus.Text = device.Name + " 投屏已停止";
+                    });
+                }
+                catch { }
+            });
+        }
+
+        private void AttachMirrorProcess(DeviceCard device, Process process, bool alreadyRunning)
+        {
+            device.MirrorProcess = process;
+            device.MirrorProcessId = process.Id;
+            device.MirrorStarting = !alreadyRunning;
+            device.MirrorStopping = false;
+            device.MirrorActive = alreadyRunning;
+            try
+            {
+                process.EnableRaisingEvents = true;
+                int processId = process.Id;
+                process.Exited += delegate { MirrorProcessExited(device, processId); };
+            }
+            catch { }
+            UpdateMirrorAction(device);
+        }
+
+        private void MirrorProcessExited(DeviceCard device, int processId)
+        {
+            if (IsDisposed)
+                return;
+            try
+            {
+                BeginInvoke((MethodInvoker)delegate
+                {
+                    if (device.MirrorProcessId != processId)
+                        return;
+                    device.MirrorProcess = null;
+                    device.MirrorProcessId = 0;
+                    device.MirrorActive = false;
+                    device.MirrorStarting = false;
+                    device.MirrorStopping = false;
+                    device.ScreenOffApplied = false;
+                    UpdateMirrorAction(device);
+                    footerStatus.Text = device.Name + " 投屏已结束";
+                });
+            }
+            catch { }
+        }
+
+        private void WatchMirrorStarted(DeviceCard device, Process process)
+        {
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                bool ready = false;
+                for (int attempt = 0; attempt < 60; attempt++)
+                {
+                    try
+                    {
+                        if (process.HasExited)
+                            break;
+                        process.Refresh();
+                        if (process.MainWindowHandle != IntPtr.Zero)
+                        {
+                            ready = true;
+                            break;
+                        }
+                    }
+                    catch { break; }
+                    System.Threading.Thread.Sleep(100);
+                }
+                if (!ready || IsDisposed)
+                    return;
+                try
+                {
+                    BeginInvoke((MethodInvoker)delegate
+                    {
+                        if (device.MirrorProcessId != process.Id)
+                            return;
+                        device.MirrorStarting = false;
+                        device.MirrorActive = true;
+                        UpdateMirrorAction(device);
+                        footerStatus.Text = device.Name + " 正在投屏 · " + KeyboardModeName();
+                    });
+                }
+                catch { }
+            });
+        }
+
+        private void AdoptExistingMirrorsAsync()
+        {
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                AdoptExistingMirror(device1);
+                AdoptExistingMirror(device2);
+            });
+        }
+
+        private void AdoptExistingMirror(DeviceCard device)
+        {
+            List<Process> running = FindMirrorProcesses(device);
+            if (running.Count == 0 || IsDisposed)
+                return;
+            Process adopted = running[0];
+            for (int i = 1; i < running.Count; i++)
+                running[i].Dispose();
+            try
+            {
+                BeginInvoke((MethodInvoker)delegate
+                {
+                    if (device.MirrorProcess == null || !IsProcessRunning(device.MirrorProcess))
+                        AttachMirrorProcess(device, adopted, true);
+                    else
+                        adopted.Dispose();
+                });
+            }
+            catch { adopted.Dispose(); }
         }
 
         private void LaunchDevice(DeviceCard device)
@@ -1623,6 +2292,11 @@ namespace OPhoneMirror
                 return;
             }
 
+            device.MirrorStarting = true;
+            device.MirrorStopping = false;
+            device.MirrorActive = false;
+            UpdateMirrorAction(device);
+            footerStatus.Text = device.Name + " 正在启动投屏…";
             try
             {
                 int previousDeviceMode = LoadDeviceMode(device.Serial);
@@ -1638,18 +2312,21 @@ namespace OPhoneMirror
                 psi.WorkingDirectory = Path.GetDirectoryName(scrcpyPath);
                 psi.UseShellExecute = false;
                 psi.CreateNoWindow = true;
-                device.MirrorProcess = Process.Start(psi);
-                device.MirrorProcessId = device.MirrorProcess.Id;
-                ApplyTopMostWhenReady(device, device.MirrorProcess);
+                Process mirrorProcess = Process.Start(psi);
+                AttachMirrorProcess(device, mirrorProcess, false);
+                ApplyTopMostWhenReady(device, mirrorProcess);
+                WatchMirrorStarted(device, mirrorProcess);
                 SaveDeviceMode(device.Serial, keyboardMode);
                 if (screenOffToggle.Checked)
                     StartScreenControl(device);
                 if (normalizeShortPhrase)
                     NormalizeShortPhraseModeAsync(device);
-                footerStatus.Text = "已启动 " + device.Name + " · " + KeyboardModeName();
             }
             catch (Exception ex)
             {
+                device.MirrorStarting = false;
+                device.MirrorActive = false;
+                UpdateMirrorAction(device);
                 MessageBox.Show(
                     "无法启动 scrcpy：\n\n" + ex.Message,
                     "启动失败",

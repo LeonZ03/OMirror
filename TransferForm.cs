@@ -32,13 +32,13 @@ namespace OPhoneMirror
 
     internal sealed class TransferForm : Form
     {
-        private readonly Color page = UiTheme.Background;
-        private readonly Color panelColor = UiTheme.Surface;
-        private readonly Color border = UiTheme.Border;
-        private readonly Color text = UiTheme.Text;
-        private readonly Color muted = UiTheme.TextMuted;
-        private readonly Color accent = UiTheme.Accent;
-        private readonly Color success = UiTheme.Success;
+        private Color page { get { return UiTheme.Background; } }
+        private Color panelColor { get { return UiTheme.Surface; } }
+        private Color border { get { return UiTheme.Border; } }
+        private Color text { get { return UiTheme.Text; } }
+        private Color muted { get { return UiTheme.TextMuted; } }
+        private Color accent { get { return UiTheme.Accent; } }
+        private Color success { get { return UiTheme.Success; } }
 
         private readonly string deviceName;
         private readonly AdbClient adb;
@@ -49,9 +49,11 @@ namespace OPhoneMirror
         private readonly DataGridView localGrid;
         private readonly DataGridView remoteGrid;
         private readonly DataGridView taskGrid;
+        private readonly RoundedPanel taskPanel;
         private readonly Button sendButton;
         private readonly Button receiveButton;
         private readonly Button clearTasksButton;
+        private readonly ModernButton activityToggleButton;
         private readonly ProgressBar progress;
         private readonly Label statusLabel;
         private readonly BackgroundWorker transferWorker;
@@ -63,6 +65,7 @@ namespace OPhoneMirror
         private int remoteLoadGeneration;
         private List<FileEntry> remoteEntries = new List<FileEntry>();
         private int remoteDisplayedCount;
+        private bool activityExpanded;
         private const int RemoteBatchSize = 1000;
 
         public TransferForm(string deviceName, string serial, string adbPath)
@@ -80,8 +83,8 @@ namespace OPhoneMirror
 
             Text = "文件互传 · " + deviceName;
             StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(1180, 760);
-            MinimumSize = new Size(1140, 640);
+            ClientSize = new Size(1120, 700);
+            MinimumSize = new Size(980, 600);
             BackColor = page;
             ForeColor = text;
             Font = new Font(UiTheme.FontFamily, 9F);
@@ -89,16 +92,18 @@ namespace OPhoneMirror
 
             Label title = new Label();
             title.Text = "文件互传";
-            title.Font = new Font(UiTheme.FontFamily, 21F, FontStyle.Bold);
+            title.Font = new Font(UiTheme.FontFamily, 20F, FontStyle.Bold);
             title.ForeColor = text;
+            title.BackColor = page;
             title.AutoSize = true;
             title.Location = new Point(20, 18);
             Controls.Add(title);
 
             int badgeWidth = Math.Max(112, TextRenderer.MeasureText(deviceName, Font).Width + 50);
             RoundedPanel deviceBadge = new RoundedPanel();
-            deviceBadge.BackColor = Color.FromArgb(234, 247, 237);
-            deviceBadge.BorderColor = Color.FromArgb(198, 233, 207);
+            deviceBadge.Name = "deviceBadge";
+            deviceBadge.BackColor = UiTheme.SurfaceRaised;
+            deviceBadge.BorderColor = UiTheme.Border;
             deviceBadge.CornerRadius = 15;
             deviceBadge.Location = new Point(190, 21);
             deviceBadge.Size = new Size(badgeWidth, 30);
@@ -117,11 +122,11 @@ namespace OPhoneMirror
             deviceLabel.Location = new Point(29, 6);
             deviceBadge.Controls.Add(deviceLabel);
 
-            sendButton = MakeTransferButton("发送到手机");
+            sendButton = MakeTransferButton("传到手机");
             sendButton.Click += delegate { StartTransfer(true); };
             Controls.Add(sendButton);
 
-            receiveButton = MakeTransferButton("保存到电脑");
+            receiveButton = MakeTransferButton("存到电脑");
             receiveButton.Click += delegate { StartTransfer(false); };
             Controls.Add(receiveButton);
 
@@ -157,10 +162,10 @@ namespace OPhoneMirror
             BuildLocalPane();
             BuildRemotePane();
 
-            RoundedPanel taskPanel = new RoundedPanel();
+            taskPanel = new RoundedPanel();
             taskPanel.Name = "taskPanel";
             taskPanel.BackColor = panelColor;
-            taskPanel.BorderColor = Color.FromArgb(232, 232, 236);
+            taskPanel.BorderColor = UiTheme.Border;
             taskPanel.Shadow = true;
             Controls.Add(taskPanel);
 
@@ -171,11 +176,17 @@ namespace OPhoneMirror
             taskTitle.Location = new Point(14, 12);
             taskPanel.Controls.Add(taskTitle);
 
+            activityToggleButton = (ModernButton)MakeToolbarIcon(UiIcon.ChevronDown, "展开传输活动");
+            activityToggleButton.Click += delegate { SetActivityExpanded(!activityExpanded); };
+            taskPanel.Controls.Add(activityToggleButton);
+
             clearTasksButton = MakeToolbarIcon(UiIcon.Trash, "清除记录");
+            clearTasksButton.Visible = false;
             clearTasksButton.Click += delegate { taskGrid.Rows.Clear(); };
             taskPanel.Controls.Add(clearTasksButton);
 
             taskGrid = MakeTaskGrid();
+            taskGrid.Visible = false;
             taskPanel.Controls.Add(taskGrid);
 
             progress = new ProgressBar();
@@ -196,13 +207,19 @@ namespace OPhoneMirror
             transferWorker.RunWorkerCompleted += TransferWorkerCompleted;
 
             Resize += delegate { LayoutControls(); };
-            FormClosed += delegate { toolTip.Dispose(); };
+            FormClosed += delegate
+            {
+                UiTheme.ThemeChanged -= ApplyTheme;
+                toolTip.Dispose();
+            };
             Shown += delegate
             {
+                WindowTheme.Apply(this);
                 LayoutControls();
                 RefreshLocal();
                 RefreshRemote();
             };
+            UiTheme.ThemeChanged += ApplyTheme;
             LayoutControls();
         }
 
@@ -293,7 +310,9 @@ namespace OPhoneMirror
             int margin = 20;
             int gap = 18;
             int paneTop = 76;
-            int paneHeight = Math.Max(310, (ClientSize.Height - 150) * 57 / 100);
+            int taskHeight = activityExpanded ? 200 : 52;
+            int taskTop = ClientSize.Height - margin - taskHeight;
+            int paneHeight = Math.Max(310, taskTop - paneTop - 16);
             int paneWidth = (ClientSize.Width - margin * 2 - gap) / 2;
 
             localPanel.SetBounds(margin, paneTop, paneWidth, paneHeight);
@@ -305,27 +324,45 @@ namespace OPhoneMirror
             remoteGrid.Size = new Size(paneWidth - 28, paneHeight - 164);
 
             int center = ClientSize.Width / 2;
-            sendButton.SetBounds(center - 238, 18, 170, 38);
-            receiveButton.SetBounds(center + 68, 18, 170, 38);
+            sendButton.SetBounds(center - 194, 18, 142, 38);
+            receiveButton.SetBounds(center + 52, 18, 142, 38);
 
-            Panel taskPanel = Controls["taskPanel"] as Panel;
             if (taskPanel != null)
             {
-                int taskTop = paneTop + paneHeight + 16;
-                int taskHeight = ClientSize.Height - taskTop - margin;
                 taskPanel.SetBounds(margin, taskTop, ClientSize.Width - margin * 2, taskHeight);
-                clearTasksButton.SetBounds(taskPanel.Width - 50, 9, 34, 31);
-                statusLabel.SetBounds(126, 17, taskPanel.Width - 196, 22);
+                activityToggleButton.SetBounds(taskPanel.Width - 50, 10, 34, 32);
+                clearTasksButton.SetBounds(taskPanel.Width - 92, 10, 34, 32);
+                statusLabel.SetBounds(112, 16, taskPanel.Width - 220, 22);
                 progress.SetBounds(14, 45, taskPanel.Width - 28, 4);
                 taskGrid.SetBounds(14, 55, taskPanel.Width - 28, Math.Max(80, taskPanel.Height - 69));
             }
+        }
+
+        private void SetActivityExpanded(bool expanded)
+        {
+            activityExpanded = expanded;
+            activityToggleButton.Icon = expanded ? UiIcon.ChevronUp : UiIcon.ChevronDown;
+            activityToggleButton.AccessibleName = expanded ? "收起传输活动" : "展开传输活动";
+            taskGrid.Visible = expanded;
+            clearTasksButton.Visible = expanded;
+            LayoutControls();
+            activityToggleButton.Invalidate();
+        }
+
+        private void ApplyTheme(ThemePalette previous)
+        {
+            UiTheme.ApplyControlTree(this, previous);
+            BackColor = UiTheme.Background;
+            ForeColor = UiTheme.Text;
+            WindowTheme.Apply(this);
+            Invalidate(true);
         }
 
         private Panel MakePane()
         {
             RoundedPanel panel = new RoundedPanel();
             panel.BackColor = panelColor;
-            panel.BorderColor = Color.FromArgb(232, 232, 236);
+            panel.BorderColor = UiTheme.Border;
             panel.Shadow = true;
             return panel;
         }
@@ -414,7 +451,9 @@ namespace OPhoneMirror
             grid.ColumnHeadersDefaultCellStyle.SelectionBackColor = UiTheme.SurfaceRaised;
             grid.DefaultCellStyle.BackColor = UiTheme.Surface;
             grid.DefaultCellStyle.ForeColor = text;
-            grid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(222, 237, 255);
+            grid.DefaultCellStyle.SelectionBackColor = UiTheme.IsDark
+                ? Color.FromArgb(38, 72, 112)
+                : Color.FromArgb(222, 237, 255);
             grid.DefaultCellStyle.SelectionForeColor = text;
             grid.DefaultCellStyle.Padding = new Padding(5, 2, 5, 2);
             grid.RowHeadersVisible = false;
@@ -471,7 +510,9 @@ namespace OPhoneMirror
             grid.ColumnHeadersDefaultCellStyle.Font = new Font(UiTheme.FontFamily, 9F, FontStyle.Bold);
             grid.DefaultCellStyle.BackColor = UiTheme.Surface;
             grid.DefaultCellStyle.ForeColor = text;
-            grid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(222, 237, 255);
+            grid.DefaultCellStyle.SelectionBackColor = UiTheme.IsDark
+                ? Color.FromArgb(38, 72, 112)
+                : Color.FromArgb(222, 237, 255);
             grid.DefaultCellStyle.SelectionForeColor = text;
             grid.RowHeadersVisible = false;
             grid.RowTemplate.Height = 30;
@@ -821,6 +862,7 @@ namespace OPhoneMirror
             }
 
             List<TransferJob> jobs = new List<TransferJob>();
+            SetActivityExpanded(true);
             foreach (FileEntry entry in selected)
             {
                 string destination = toPhone
@@ -923,6 +965,8 @@ namespace OPhoneMirror
 
         private void SetBusy(bool busy)
         {
+            if (busy && !activityExpanded)
+                SetActivityExpanded(true);
             sendButton.Enabled = !busy;
             receiveButton.Enabled = !busy;
             progress.Visible = busy;
