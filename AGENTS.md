@@ -6,14 +6,14 @@ This file is the compact source of truth for AI agents working in this repositor
 
 - Name: `OPhoneMirror`.
 - Platform: Windows desktop, WinForms on .NET Framework.
-- Current UI version: `1.9.0`; bundled runtime expected: scrcpy `4.1` with ADB `37.0.1`.
+- Current UI version: `1.10.0`; bundled runtime expected: scrcpy `4.1` with ADB `37.0.1`.
 - There is intentionally no `.csproj`: `build.ps1` invokes the .NET Framework `csc.exe` directly.
 - Repository source is self-contained. `dist/` and `devices.local.txt` are local-only and ignored.
 
 ## Source map
 
-- `OPhoneMirror.cs`: shared dark UI tokens/controls, main device cards, USB status, scrcpy launch/restart, keyboard mode persistence, and mode normalization.
-- `TransferForm.cs`: matching dark two-pane PC/Android file browser, selection, transfer queue, collision confirmation, and large-directory batching.
+- `OPhoneMirror.cs`: shared Apple-inspired light UI tokens/controls, main device cards, USB status, scrcpy launch/restart, keyboard mode persistence, and mode normalization.
+- `TransferForm.cs`: matching light two-pane PC/Android file browser, selection, transfer queue, collision confirmation, and large-directory batching.
 - `AdbClient.cs`: quoted ADB execution, UTF-8 shell input, Unicode-safe file transfer, and tar-stream directory receive.
 - `KeyboardCapture.cs`: low-level Windows keyboard hook active only when a tracked scrcpy window owns foreground focus.
 - `app.manifest`: `asInvoker`; do not elevate, because Windows blocks Explorer drag/drop into elevated windows.

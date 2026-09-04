@@ -44,8 +44,8 @@ namespace OPhoneMirror
         private readonly AdbClient adb;
         private readonly Panel localPanel;
         private readonly Panel remotePanel;
-        private readonly TextBox localPathBox;
-        private readonly TextBox remotePathBox;
+        private readonly RoundedTextBox localPathBox;
+        private readonly RoundedTextBox remotePathBox;
         private readonly DataGridView localGrid;
         private readonly DataGridView remoteGrid;
         private readonly DataGridView taskGrid;
@@ -82,25 +82,38 @@ namespace OPhoneMirror
             MinimumSize = new Size(1140, 640);
             BackColor = page;
             ForeColor = text;
-            Font = new Font("Microsoft YaHei UI", 9F);
+            Font = new Font(UiTheme.FontFamily, 9F);
             AutoScaleMode = AutoScaleMode.Dpi;
 
             Label title = new Label();
             title.Text = "文件互传";
-            title.Font = new Font("Microsoft YaHei UI", 20F, FontStyle.Bold);
+            title.Font = new Font(UiTheme.FontFamily, 21F, FontStyle.Bold);
             title.ForeColor = text;
             title.AutoSize = true;
             title.Location = new Point(20, 18);
             Controls.Add(title);
 
-            Label device = new Label();
-            device.Text = "USB · " + deviceName;
-            device.ForeColor = success;
-            device.BackColor = Color.FromArgb(25, 65, 58);
-            device.AutoSize = true;
-            device.Padding = new Padding(8, 4, 8, 4);
-            device.Location = new Point(190, 22);
-            Controls.Add(device);
+            int badgeWidth = Math.Max(112, TextRenderer.MeasureText(deviceName, Font).Width + 50);
+            RoundedPanel deviceBadge = new RoundedPanel();
+            deviceBadge.BackColor = Color.FromArgb(234, 247, 237);
+            deviceBadge.BorderColor = Color.FromArgb(198, 233, 207);
+            deviceBadge.CornerRadius = 15;
+            deviceBadge.Location = new Point(190, 21);
+            deviceBadge.Size = new Size(badgeWidth, 30);
+            Controls.Add(deviceBadge);
+
+            StatusDot deviceDot = new StatusDot();
+            deviceDot.DotColor = success;
+            deviceDot.Location = new Point(12, 10);
+            deviceDot.Size = new Size(10, 10);
+            deviceBadge.Controls.Add(deviceDot);
+
+            Label deviceLabel = new Label();
+            deviceLabel.Text = "USB · " + deviceName;
+            deviceLabel.ForeColor = success;
+            deviceLabel.AutoSize = true;
+            deviceLabel.Location = new Point(29, 6);
+            deviceBadge.Controls.Add(deviceLabel);
 
             sendButton = MakeTransferButton("发送到手机");
             sendButton.Click += delegate { StartTransfer(true); };
@@ -145,12 +158,13 @@ namespace OPhoneMirror
             RoundedPanel taskPanel = new RoundedPanel();
             taskPanel.Name = "taskPanel";
             taskPanel.BackColor = panelColor;
-            taskPanel.BorderColor = border;
+            taskPanel.BorderColor = Color.FromArgb(232, 232, 236);
+            taskPanel.Shadow = true;
             Controls.Add(taskPanel);
 
             Label taskTitle = new Label();
             taskTitle.Text = "传输列表";
-            taskTitle.Font = new Font("Microsoft YaHei UI", 12F, FontStyle.Bold);
+            taskTitle.Font = new Font(UiTheme.FontFamily, 12F, FontStyle.Bold);
             taskTitle.AutoSize = true;
             taskTitle.Location = new Point(14, 12);
             taskPanel.Controls.Add(taskTitle);
@@ -309,7 +323,8 @@ namespace OPhoneMirror
         {
             RoundedPanel panel = new RoundedPanel();
             panel.BackColor = panelColor;
-            panel.BorderColor = border;
+            panel.BorderColor = Color.FromArgb(232, 232, 236);
+            panel.Shadow = true;
             return panel;
         }
 
@@ -317,7 +332,7 @@ namespace OPhoneMirror
         {
             Label label = new Label();
             label.Text = heading;
-            label.Font = new Font("Microsoft YaHei UI", 12F, FontStyle.Bold);
+            label.Font = new Font(UiTheme.FontFamily, 12F, FontStyle.Bold);
             label.ForeColor = text;
             label.AutoSize = true;
             label.Location = new Point(14, 12);
@@ -328,20 +343,16 @@ namespace OPhoneMirror
         {
             Label label = new Label();
             label.Text = caption;
-            label.Font = new Font("Microsoft YaHei UI", 8.5F);
+            label.Font = new Font(UiTheme.FontFamily, 8.5F);
             label.ForeColor = muted;
             label.AutoSize = true;
             label.Location = new Point(15, 42);
             return label;
         }
 
-        private TextBox MakePathBox()
+        private RoundedTextBox MakePathBox()
         {
-            TextBox box = new TextBox();
-            box.BorderStyle = BorderStyle.FixedSingle;
-            box.Font = new Font("Consolas", 10F);
-            box.BackColor = UiTheme.SurfaceMuted;
-            box.ForeColor = text;
+            RoundedTextBox box = new RoundedTextBox();
             return box;
         }
 
@@ -352,7 +363,7 @@ namespace OPhoneMirror
             button.Kind = UiButtonKind.Primary;
             button.BackColor = accent;
             button.ForeColor = Color.White;
-            button.Font = new Font("Microsoft YaHei UI", 10F, FontStyle.Bold);
+            button.Font = new Font(UiTheme.FontFamily, 9.5F, FontStyle.Bold);
             button.Cursor = Cursors.Hand;
             return button;
         }
@@ -384,12 +395,12 @@ namespace OPhoneMirror
             grid.EnableHeadersVisualStyles = false;
             grid.ColumnHeadersDefaultCellStyle.BackColor = UiTheme.SurfaceRaised;
             grid.ColumnHeadersDefaultCellStyle.ForeColor = text;
-            grid.ColumnHeadersDefaultCellStyle.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
+            grid.ColumnHeadersDefaultCellStyle.Font = new Font(UiTheme.FontFamily, 9F, FontStyle.Bold);
             grid.ColumnHeadersDefaultCellStyle.SelectionBackColor = UiTheme.SurfaceRaised;
             grid.DefaultCellStyle.BackColor = UiTheme.Surface;
             grid.DefaultCellStyle.ForeColor = text;
-            grid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(48, 73, 119);
-            grid.DefaultCellStyle.SelectionForeColor = Color.White;
+            grid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(222, 237, 255);
+            grid.DefaultCellStyle.SelectionForeColor = text;
             grid.DefaultCellStyle.Padding = new Padding(5, 2, 5, 2);
             grid.RowHeadersVisible = false;
             grid.RowTemplate.Height = 36;
@@ -442,11 +453,11 @@ namespace OPhoneMirror
             grid.EnableHeadersVisualStyles = false;
             grid.ColumnHeadersDefaultCellStyle.BackColor = UiTheme.SurfaceRaised;
             grid.ColumnHeadersDefaultCellStyle.ForeColor = text;
-            grid.ColumnHeadersDefaultCellStyle.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
+            grid.ColumnHeadersDefaultCellStyle.Font = new Font(UiTheme.FontFamily, 9F, FontStyle.Bold);
             grid.DefaultCellStyle.BackColor = UiTheme.Surface;
             grid.DefaultCellStyle.ForeColor = text;
-            grid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(48, 73, 119);
-            grid.DefaultCellStyle.SelectionForeColor = Color.White;
+            grid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(222, 237, 255);
+            grid.DefaultCellStyle.SelectionForeColor = text;
             grid.RowHeadersVisible = false;
             grid.RowTemplate.Height = 30;
             grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
@@ -919,7 +930,7 @@ namespace OPhoneMirror
                 form.MinimizeBox = false;
                 form.MaximizeBox = false;
                 form.ClientSize = new Size(390, 142);
-                form.Font = new Font("Microsoft YaHei UI", 9F);
+                form.Font = new Font(UiTheme.FontFamily, 9F);
                 form.BackColor = UiTheme.Background;
                 form.ForeColor = UiTheme.Text;
 

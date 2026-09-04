@@ -12,8 +12,8 @@ using System.Windows.Forms;
 
 [assembly: AssemblyTitle("OPhoneMirror")]
 [assembly: AssemblyProduct("OPhoneMirror")]
-[assembly: AssemblyVersion("1.9.0.0")]
-[assembly: AssemblyFileVersion("1.9.0.0")]
+[assembly: AssemblyVersion("1.10.0.0")]
+[assembly: AssemblyFileVersion("1.10.0.0")]
 
 namespace OPhoneMirror
 {
@@ -27,21 +27,24 @@ namespace OPhoneMirror
 
     internal static class UiTheme
     {
-        public static readonly Color Background = Color.FromArgb(15, 23, 42);
-        public static readonly Color Surface = Color.FromArgb(27, 35, 54);
-        public static readonly Color SurfaceRaised = Color.FromArgb(32, 42, 63);
-        public static readonly Color SurfaceMuted = Color.FromArgb(39, 48, 69);
-        public static readonly Color Border = Color.FromArgb(63, 76, 101);
-        public static readonly Color BorderStrong = Color.FromArgb(78, 94, 124);
-        public static readonly Color Text = Color.FromArgb(248, 250, 252);
-        public static readonly Color TextMuted = Color.FromArgb(174, 186, 204);
-        public static readonly Color TextDim = Color.FromArgb(137, 151, 173);
-        public static readonly Color Accent = Color.FromArgb(59, 111, 216);
-        public static readonly Color AccentHover = Color.FromArgb(63, 112, 213);
-        public static readonly Color AccentPressed = Color.FromArgb(53, 99, 194);
-        public static readonly Color Success = Color.FromArgb(55, 211, 154);
-        public static readonly Color Offline = Color.FromArgb(126, 140, 164);
-        public static readonly Color Danger = Color.FromArgb(248, 113, 113);
+        public const string FontFamily = "Segoe UI Variable Text";
+        public static readonly Color Background = Color.FromArgb(245, 245, 247);
+        public static readonly Color Surface = Color.FromArgb(255, 255, 255);
+        public static readonly Color SurfaceRaised = Color.FromArgb(250, 250, 252);
+        public static readonly Color SurfaceMuted = Color.FromArgb(238, 238, 241);
+        public static readonly Color SurfaceHover = Color.FromArgb(232, 232, 236);
+        public static readonly Color SurfacePressed = Color.FromArgb(218, 218, 223);
+        public static readonly Color Border = Color.FromArgb(222, 222, 226);
+        public static readonly Color BorderStrong = Color.FromArgb(190, 190, 196);
+        public static readonly Color Text = Color.FromArgb(29, 29, 31);
+        public static readonly Color TextMuted = Color.FromArgb(96, 96, 102);
+        public static readonly Color TextDim = Color.FromArgb(142, 142, 147);
+        public static readonly Color Accent = Color.FromArgb(0, 105, 210);
+        public static readonly Color AccentHover = Color.FromArgb(0, 113, 227);
+        public static readonly Color AccentPressed = Color.FromArgb(0, 91, 184);
+        public static readonly Color Success = Color.FromArgb(31, 122, 54);
+        public static readonly Color Offline = Color.FromArgb(134, 134, 139);
+        public static readonly Color Danger = Color.FromArgb(215, 0, 21);
     }
 
     internal enum UiButtonKind
@@ -57,7 +60,7 @@ namespace OPhoneMirror
         private bool pressed;
 
         public UiButtonKind Kind = UiButtonKind.Secondary;
-        public int CornerRadius = 8;
+        public int CornerRadius = 10;
 
         public ModernButton()
         {
@@ -119,7 +122,7 @@ namespace OPhoneMirror
             if (!Enabled)
             {
                 fill = UiTheme.SurfaceMuted;
-                stroke = UiTheme.Border;
+                stroke = UiTheme.SurfaceMuted;
                 content = UiTheme.TextDim;
             }
             else if (Kind == UiButtonKind.Primary)
@@ -130,14 +133,14 @@ namespace OPhoneMirror
             }
             else if (Kind == UiButtonKind.Quiet)
             {
-                fill = pressed ? UiTheme.SurfaceMuted : hovered ? UiTheme.SurfaceRaised : BackColor;
+                fill = pressed ? UiTheme.SurfacePressed : hovered ? UiTheme.SurfaceHover : BackColor;
                 stroke = fill;
                 content = ForeColor;
             }
             else
             {
-                fill = pressed ? UiTheme.SurfaceMuted : hovered ? UiTheme.SurfaceRaised : UiTheme.Surface;
-                stroke = hovered ? UiTheme.BorderStrong : UiTheme.Border;
+                fill = pressed ? UiTheme.SurfacePressed : hovered ? UiTheme.SurfaceHover : UiTheme.SurfaceMuted;
+                stroke = fill;
                 content = UiTheme.Text;
             }
 
@@ -159,8 +162,10 @@ namespace OPhoneMirror
 
             if (Focused && ShowFocusCues)
             {
-                Rectangle focus = Rectangle.Inflate(bounds, -3, -3);
-                ControlPaint.DrawFocusRectangle(e.Graphics, focus, Color.White, fill);
+                Rectangle focus = Rectangle.Inflate(bounds, -2, -2);
+                using (GraphicsPath focusPath = RoundedPanel.CreateRoundedRect(focus, Math.Max(4, CornerRadius - 2)))
+                using (Pen focusPen = new Pen(UiTheme.Accent, 2))
+                    e.Graphics.DrawPath(focusPen, focusPath);
             }
         }
     }
@@ -197,7 +202,7 @@ namespace OPhoneMirror
             Cursor = Cursors.Hand;
             ForeColor = UiTheme.Text;
             BackColor = UiTheme.Surface;
-            Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Regular);
+            Font = new Font(UiTheme.FontFamily, 9F, FontStyle.Regular);
             AccessibleRole = AccessibleRole.CheckButton;
             TabStop = true;
         }
@@ -302,11 +307,19 @@ namespace OPhoneMirror
             Color trackColor = Checked ? UiTheme.Accent : UiTheme.SurfaceMuted;
             using (GraphicsPath trackPath = RoundedPanel.CreateRoundedRect(track, 11))
             using (SolidBrush trackBrush = new SolidBrush(trackColor))
+            using (Pen trackPen = new Pen(Checked ? UiTheme.Accent : UiTheme.BorderStrong, 1))
+            {
                 e.Graphics.FillPath(trackBrush, trackPath);
+                e.Graphics.DrawPath(trackPen, trackPath);
+            }
 
             int thumbX = Checked ? track.Right - 19 : track.Left + 3;
             using (SolidBrush thumbBrush = new SolidBrush(Color.White))
+            using (Pen thumbPen = new Pen(Color.FromArgb(205, 205, 210), 1))
+            {
                 e.Graphics.FillEllipse(thumbBrush, thumbX, track.Top + 3, 16, 16);
+                e.Graphics.DrawEllipse(thumbPen, thumbX, track.Top + 3, 16, 16);
+            }
 
             Rectangle textBounds = new Rectangle(6, 0, Math.Max(0, Width - 57), Height);
             TextRenderer.DrawText(
@@ -318,7 +331,11 @@ namespace OPhoneMirror
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
 
             if (Focused && ShowFocusCues)
-                ControlPaint.DrawFocusRectangle(e.Graphics, Rectangle.Inflate(controlBounds, -2, -2));
+            {
+                using (GraphicsPath focusPath = RoundedPanel.CreateRoundedRect(Rectangle.Inflate(controlBounds, -2, -2), 7))
+                using (Pen focusPen = new Pen(UiTheme.Accent, 2))
+                    e.Graphics.DrawPath(focusPen, focusPath);
+            }
         }
     }
 
@@ -356,7 +373,7 @@ namespace OPhoneMirror
                 ControlStyles.ResizeRedraw, true);
             BackColor = UiTheme.Surface;
             ForeColor = UiTheme.Text;
-            Font = new Font("Microsoft YaHei UI", 8.5F, FontStyle.Regular);
+            Font = new Font(UiTheme.FontFamily, 8.5F, FontStyle.Regular);
             Cursor = Cursors.Hand;
             TabStop = true;
             AccessibleRole = AccessibleRole.ComboBox;
@@ -456,7 +473,81 @@ namespace OPhoneMirror
             }
 
             if (Focused && ShowFocusCues)
-                ControlPaint.DrawFocusRectangle(e.Graphics, Rectangle.Inflate(bounds, -2, -2));
+            {
+                using (GraphicsPath focusPath = RoundedPanel.CreateRoundedRect(Rectangle.Inflate(bounds, -2, -2), 6))
+                using (Pen focusPen = new Pen(UiTheme.Accent, 2))
+                    e.Graphics.DrawPath(focusPen, focusPath);
+            }
+        }
+    }
+
+    internal sealed class RoundedTextBox : UserControl
+    {
+        private readonly TextBox input;
+
+        public new event KeyEventHandler KeyDown
+        {
+            add { input.KeyDown += value; }
+            remove { input.KeyDown -= value; }
+        }
+
+        public override string Text
+        {
+            get { return input == null ? base.Text : input.Text; }
+            set
+            {
+                base.Text = value;
+                if (input != null)
+                    input.Text = value;
+            }
+        }
+
+        public RoundedTextBox()
+        {
+            SetStyle(ControlStyles.UserPaint |
+                ControlStyles.AllPaintingInWmPaint |
+                ControlStyles.OptimizedDoubleBuffer |
+                ControlStyles.ResizeRedraw, true);
+            BackColor = Color.Transparent;
+            TabStop = false;
+
+            input = new TextBox();
+            input.BorderStyle = BorderStyle.None;
+            input.BackColor = UiTheme.SurfaceRaised;
+            input.ForeColor = UiTheme.Text;
+            input.Font = new Font("Consolas", 9.5F);
+            input.TabStop = true;
+            input.GotFocus += delegate { Invalidate(); };
+            input.LostFocus += delegate { Invalidate(); };
+            Controls.Add(input);
+            Height = 32;
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            int inputHeight = input == null ? 20 : input.PreferredHeight;
+            if (input != null)
+                input.SetBounds(11, Math.Max(1, (Height - inputHeight) / 2), Math.Max(1, Width - 22), inputHeight);
+        }
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            input.Focus();
+            base.OnMouseDown(e);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            Rectangle bounds = new Rectangle(0, 0, Width - 1, Height - 1);
+            using (GraphicsPath path = RoundedPanel.CreateRoundedRect(bounds, 8))
+            using (SolidBrush fill = new SolidBrush(UiTheme.SurfaceRaised))
+            using (Pen pen = new Pen(input.Focused ? UiTheme.Accent : UiTheme.Border, input.Focused ? 2 : 1))
+            {
+                e.Graphics.FillPath(fill, path);
+                e.Graphics.DrawPath(pen, path);
+            }
         }
     }
 
@@ -476,14 +567,17 @@ namespace OPhoneMirror
         protected override void OnPaint(PaintEventArgs e)
         {
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            Rectangle well = new Rectangle(1, 3, Width - 3, Width - 3);
+            using (SolidBrush wellBrush = new SolidBrush(Color.FromArgb(232, 242, 255)))
+                e.Graphics.FillEllipse(wellBrush, well);
             using (Pen pen = new Pen(UiTheme.Accent, 2.2F))
             using (SolidBrush dot = new SolidBrush(UiTheme.Accent))
             {
-                Rectangle phone = new Rectangle(9, 4, Width - 19, Height - 9);
+                Rectangle phone = new Rectangle(17, 12, Width - 35, Height - 22);
                 using (GraphicsPath path = RoundedPanel.CreateRoundedRect(phone, 6))
                     e.Graphics.DrawPath(pen, path);
-                e.Graphics.DrawLine(pen, phone.Left + 8, phone.Top + 6, phone.Right - 8, phone.Top + 6);
-                e.Graphics.FillEllipse(dot, phone.Left + (phone.Width / 2) - 2, phone.Bottom - 6, 4, 4);
+                e.Graphics.DrawLine(pen, phone.Left + 6, phone.Top + 5, phone.Right - 6, phone.Top + 5);
+                e.Graphics.FillEllipse(dot, phone.Left + (phone.Width / 2) - 1.5F, phone.Bottom - 5, 3, 3);
             }
         }
     }
@@ -531,7 +625,8 @@ namespace OPhoneMirror
     internal sealed class RoundedPanel : Panel
     {
         public Color BorderColor = UiTheme.Border;
-        public int CornerRadius = 14;
+        public int CornerRadius = 18;
+        public bool Shadow;
 
         public RoundedPanel()
         {
@@ -544,21 +639,35 @@ namespace OPhoneMirror
         protected override void OnResize(EventArgs eventargs)
         {
             base.OnResize(eventargs);
-            if (Width > 1 && Height > 1)
-            {
-                using (GraphicsPath path = CreateRoundedRect(new Rectangle(0, 0, Width, Height), CornerRadius))
-                    Region = new Region(path);
-            }
+            Invalidate();
+        }
+
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            Color parentColor = Parent == null ? UiTheme.Background : Parent.BackColor;
+            e.Graphics.Clear(parentColor);
         }
 
         protected override void OnPaint(PaintEventArgs e)
         {
-            base.OnPaint(e);
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            Rectangle r = new Rectangle(0, 0, Width - 1, Height - 1);
+            Rectangle r = Shadow
+                ? new Rectangle(1, 1, Width - 6, Height - 7)
+                : new Rectangle(0, 0, Width - 1, Height - 1);
+
+            if (Shadow)
+            {
+                Rectangle shadowBounds = new Rectangle(r.X + 2, r.Y + 3, r.Width, r.Height);
+                using (GraphicsPath shadowPath = CreateRoundedRect(shadowBounds, CornerRadius))
+                using (SolidBrush shadowBrush = new SolidBrush(Color.FromArgb(20, 0, 0, 0)))
+                    e.Graphics.FillPath(shadowBrush, shadowPath);
+            }
+
             using (GraphicsPath path = CreateRoundedRect(r, CornerRadius))
+            using (SolidBrush fill = new SolidBrush(BackColor))
             using (Pen pen = new Pen(BorderColor, 1))
             {
+                e.Graphics.FillPath(fill, path);
                 e.Graphics.DrawPath(pen, path);
             }
         }
@@ -624,33 +733,33 @@ namespace OPhoneMirror
 
             Text = "OPhoneMirror · 手机有线投屏";
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(800, 552);
-            MinimumSize = new Size(816, 591);
+            ClientSize = new Size(820, 580);
+            MinimumSize = new Size(836, 619);
             BackColor = background;
             ForeColor = foreground;
-            Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Regular, GraphicsUnit.Point);
+            Font = new Font(UiTheme.FontFamily, 9F, FontStyle.Regular, GraphicsUnit.Point);
             AutoScaleMode = AutoScaleMode.Dpi;
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
 
             Label title = new Label();
             title.Text = "OPhoneMirror";
-            title.Font = new Font("Microsoft YaHei UI", 24F, FontStyle.Bold);
+            title.Font = new Font(UiTheme.FontFamily, 25F, FontStyle.Bold);
             title.ForeColor = foreground;
             title.AutoSize = true;
-            title.Location = new Point(32, 24);
+            title.Location = new Point(32, 26);
             Controls.Add(title);
 
             Label subtitle = new Label();
-            subtitle.Text = "USB 低延迟投屏、键鼠控制与文件互传";
-            subtitle.Font = new Font("Microsoft YaHei UI", 10F);
+            subtitle.Text = "让 Android 与电脑自然协作";
+            subtitle.Font = new Font(UiTheme.FontFamily, 10F);
             subtitle.ForeColor = muted;
             subtitle.AutoSize = true;
-            subtitle.Location = new Point(35, 72);
+            subtitle.Location = new Point(35, 75);
             Controls.Add(subtitle);
 
             Button refresh = MakeSecondaryButton("刷新设备");
-            refresh.Location = new Point(660, 32);
+            refresh.Location = new Point(680, 34);
             refresh.Size = new Size(108, 38);
             refresh.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             refresh.Click += delegate { RefreshDevices(); };
@@ -658,58 +767,88 @@ namespace OPhoneMirror
 
             List<DeviceDefinition> definitions = LoadDeviceDefinitions();
             device1 = CreateDeviceCard(definitions[0], 32, 116);
-            device2 = CreateDeviceCard(definitions[1], 412, 116);
+            device2 = CreateDeviceCard(definitions[1], 422, 116);
 
             RoundedPanel info = new RoundedPanel();
             info.Name = "optionsPanel";
             info.BackColor = card;
-            info.Location = new Point(32, 344);
-            info.Size = new Size(736, 134);
+            info.BorderColor = Color.FromArgb(232, 232, 236);
+            info.Shadow = true;
+            info.Location = new Point(32, 358);
+            info.Size = new Size(756, 164);
             info.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
 
             Label infoTitle = new Label();
-            infoTitle.Text = "投屏选项";
+            infoTitle.Text = "投屏偏好";
             infoTitle.ForeColor = foreground;
-            infoTitle.Font = new Font("Microsoft YaHei UI", 11F, FontStyle.Bold);
+            infoTitle.Font = new Font(UiTheme.FontFamily, 11F, FontStyle.Bold);
             infoTitle.AutoSize = true;
-            infoTitle.Location = new Point(20, 16);
+            infoTitle.Location = new Point(22, 17);
             info.Controls.Add(infoTitle);
 
             Label infoCaption = new Label();
-            infoCaption.Text = "修改后会立即应用到正在运行的投屏";
+            infoCaption.Text = "所有设置都会记住，并立即应用到正在运行的投屏";
             infoCaption.ForeColor = muted;
             infoCaption.AutoSize = true;
-            infoCaption.Location = new Point(20, 43);
+            infoCaption.Location = new Point(22, 46);
             info.Controls.Add(infoCaption);
 
             screenOffToggle = new ToggleSwitch();
             screenOffToggle.Text = "仅熄手机屏幕";
-            screenOffToggle.Location = new Point(14, 76);
-            screenOffToggle.Size = new Size(176, 40);
+            screenOffToggle.Location = new Point(18, 78);
+            screenOffToggle.Size = new Size(180, 40);
             screenOffToggle.Checked = LoadScreenOffSetting();
             screenOffToggle.CheckedChanged += ScreenOffSettingChanged;
             info.Controls.Add(screenOffToggle);
 
+            Label screenOffHint = new Label();
+            screenOffHint.Text = "镜像保持显示，手机更省电";
+            screenOffHint.ForeColor = muted;
+            screenOffHint.Font = new Font(UiTheme.FontFamily, 8F);
+            screenOffHint.AutoSize = true;
+            screenOffHint.Location = new Point(24, 125);
+            info.Controls.Add(screenOffHint);
+
+            Panel firstDivider = new Panel();
+            firstDivider.BackColor = UiTheme.Border;
+            firstDivider.Location = new Point(211, 78);
+            firstDivider.Size = new Size(1, 62);
+            info.Controls.Add(firstDivider);
+
             alwaysOnTopToggle = new ToggleSwitch();
             alwaysOnTopToggle.Text = "保持在最顶层";
-            alwaysOnTopToggle.Location = new Point(198, 76);
-            alwaysOnTopToggle.Size = new Size(176, 40);
+            alwaysOnTopToggle.Location = new Point(224, 78);
+            alwaysOnTopToggle.Size = new Size(184, 40);
             alwaysOnTopToggle.Checked = LoadAlwaysOnTopSetting();
             alwaysOnTopToggle.CheckedChanged += AlwaysOnTopSettingChanged;
             info.Controls.Add(alwaysOnTopToggle);
+
+            Label alwaysOnTopHint = new Label();
+            alwaysOnTopHint.Text = "需要时也可允许其他窗口覆盖";
+            alwaysOnTopHint.ForeColor = muted;
+            alwaysOnTopHint.Font = new Font(UiTheme.FontFamily, 8F);
+            alwaysOnTopHint.AutoSize = true;
+            alwaysOnTopHint.Location = new Point(230, 125);
+            info.Controls.Add(alwaysOnTopHint);
+
+            Panel secondDivider = new Panel();
+            secondDivider.BackColor = UiTheme.Border;
+            secondDivider.Location = new Point(422, 78);
+            secondDivider.Size = new Size(1, 62);
+            info.Controls.Add(secondDivider);
 
             Label keyboardLabel = new Label();
             keyboardLabel.Text = "键盘输入模式";
             keyboardLabel.ForeColor = muted;
             keyboardLabel.AutoSize = true;
-            keyboardLabel.Location = new Point(398, 58);
+            keyboardLabel.Location = new Point(438, 82);
             info.Controls.Add(keyboardLabel);
 
             keyboardModeSelector = new ModeSelector();
             keyboardModeSelector.FirstText = "搜狗短语 · Shift 中英";
             keyboardModeSelector.SecondText = "数字选词 · Shift+Space";
-            keyboardModeSelector.Location = new Point(398, 82);
-            keyboardModeSelector.Size = new Size(316, 32);
+            keyboardModeSelector.Location = new Point(438, 106);
+            keyboardModeSelector.Size = new Size(298, 34);
             keyboardModeSelector.SelectedIndex = keyboardMode;
             keyboardModeSelector.SelectedIndexChanged += KeyboardModeChanged;
             info.Controls.Add(keyboardModeSelector);
@@ -719,15 +858,15 @@ namespace OPhoneMirror
             footerStatus.Text = "正在检查设备…";
             footerStatus.ForeColor = muted;
             footerStatus.AutoSize = true;
-            footerStatus.Location = new Point(36, 510);
+            footerStatus.Location = new Point(36, 550);
             footerStatus.Anchor = AnchorStyles.Left | AnchorStyles.Bottom;
             Controls.Add(footerStatus);
 
             Label version = new Label();
-            version.Text = "OPhoneMirror 1.9.0 · scrcpy 4.1";
+            version.Text = "OPhoneMirror 1.10.0 · scrcpy 4.1";
             version.ForeColor = muted;
             version.AutoSize = false;
-            version.Location = new Point(500, 505);
+            version.Location = new Point(520, 545);
             version.Size = new Size(268, 24);
             version.TextAlign = ContentAlignment.MiddleRight;
             version.Anchor = AnchorStyles.Right | AnchorStyles.Bottom;
@@ -831,41 +970,43 @@ namespace OPhoneMirror
 
             RoundedPanel panel = new RoundedPanel();
             panel.BackColor = card;
+            panel.Shadow = true;
+            panel.CornerRadius = 18;
             panel.Location = new Point(x, y);
-            panel.Size = new Size(356, 204);
-            panel.BorderColor = UiTheme.Border;
+            panel.Size = new Size(366, 218);
+            panel.BorderColor = Color.FromArgb(232, 232, 236);
 
             PhoneGlyph phoneIcon = new PhoneGlyph();
-            phoneIcon.Location = new Point(18, 18);
-            phoneIcon.Size = new Size(46, 52);
+            phoneIcon.Location = new Point(20, 20);
+            phoneIcon.Size = new Size(56, 56);
             panel.Controls.Add(phoneIcon);
 
             Label nameLabel = new Label();
             nameLabel.Text = device.Name;
-            nameLabel.Font = new Font("Microsoft YaHei UI", 16F, FontStyle.Bold);
+            nameLabel.Font = new Font(UiTheme.FontFamily, 16F, FontStyle.Bold);
             nameLabel.ForeColor = foreground;
             nameLabel.AutoSize = true;
-            nameLabel.Location = new Point(78, 18);
+            nameLabel.Location = new Point(92, 23);
             panel.Controls.Add(nameLabel);
 
             Label modelLabel = new Label();
             modelLabel.Text = device.Model;
             modelLabel.ForeColor = muted;
             modelLabel.AutoSize = true;
-            modelLabel.Location = new Point(80, 55);
+            modelLabel.Location = new Point(94, 59);
             panel.Controls.Add(modelLabel);
 
             device.StatusBadge = new RoundedPanel();
             device.StatusBadge.BackColor = UiTheme.SurfaceMuted;
             device.StatusBadge.BorderColor = UiTheme.Border;
             device.StatusBadge.CornerRadius = 14;
-            device.StatusBadge.Location = new Point(20, 88);
-            device.StatusBadge.Size = new Size(116, 30);
+            device.StatusBadge.Location = new Point(24, 98);
+            device.StatusBadge.Size = new Size(112, 28);
             panel.Controls.Add(device.StatusBadge);
 
             device.StatusDot = new StatusDot();
             device.StatusDot.DotColor = offline;
-            device.StatusDot.Location = new Point(12, 10);
+            device.StatusDot.Location = new Point(12, 9);
             device.StatusDot.Size = new Size(10, 10);
             device.StatusBadge.Controls.Add(device.StatusDot);
 
@@ -873,18 +1014,18 @@ namespace OPhoneMirror
             device.StatusLabel.Text = "未连接";
             device.StatusLabel.ForeColor = muted;
             device.StatusLabel.AutoSize = true;
-            device.StatusLabel.Location = new Point(29, 6);
+            device.StatusLabel.Location = new Point(29, 5);
             device.StatusBadge.Controls.Add(device.StatusLabel);
 
             device.LaunchButton = MakePrimaryButton("启动有线投屏");
-            device.LaunchButton.Location = new Point(20, 140);
-            device.LaunchButton.Size = new Size(202, 44);
+            device.LaunchButton.Location = new Point(24, 152);
+            device.LaunchButton.Size = new Size(204, 44);
             device.LaunchButton.Enabled = false;
             device.LaunchButton.Click += delegate { LaunchDevice(device); };
             panel.Controls.Add(device.LaunchButton);
 
             device.TransferButton = MakeSecondaryButton("文件互传");
-            device.TransferButton.Location = new Point(230, 140);
+            device.TransferButton.Location = new Point(236, 152);
             device.TransferButton.Size = new Size(106, 44);
             device.TransferButton.Enabled = false;
             device.TransferButton.Click += delegate { OpenTransfer(device); };
@@ -902,7 +1043,7 @@ namespace OPhoneMirror
             b.BackColor = accent;
             b.ForeColor = Color.White;
             b.Cursor = Cursors.Hand;
-            b.Font = new Font("Microsoft YaHei UI", 10F, FontStyle.Bold);
+            b.Font = new Font(UiTheme.FontFamily, 9.5F, FontStyle.Bold);
             return b;
         }
 
@@ -997,8 +1138,8 @@ namespace OPhoneMirror
         {
             device.StatusDot.DotColor = connected ? online : offline;
             device.StatusDot.Invalidate();
-            device.StatusBadge.BackColor = connected ? Color.FromArgb(25, 65, 58) : UiTheme.SurfaceMuted;
-            device.StatusBadge.BorderColor = connected ? Color.FromArgb(45, 128, 101) : UiTheme.Border;
+            device.StatusBadge.BackColor = connected ? Color.FromArgb(234, 247, 237) : UiTheme.SurfaceMuted;
+            device.StatusBadge.BorderColor = connected ? Color.FromArgb(198, 233, 207) : UiTheme.SurfaceMuted;
             device.StatusBadge.Invalidate();
             device.StatusLabel.Text = connected ? "USB 已连接" : "未连接";
             device.StatusLabel.ForeColor = connected ? online : muted;
