@@ -6,13 +6,13 @@ This file is the compact source of truth for AI agents working in this repositor
 
 - Name: `OPhoneMirror`.
 - Platform: Windows desktop, WinForms on .NET Framework.
-- Current UI version: `1.10.0`; bundled runtime expected: scrcpy `4.1` with ADB `37.0.1`.
+- Current UI version: `1.11.0`; bundled runtime expected: scrcpy `4.1` with ADB `37.0.1`.
 - There is intentionally no `.csproj`: `build.ps1` invokes the .NET Framework `csc.exe` directly.
 - Repository source is self-contained. `dist/` and `devices.local.txt` are local-only and ignored.
 
 ## Source map
 
-- `OPhoneMirror.cs`: shared Apple-inspired light UI tokens/controls, main device cards, USB status, scrcpy launch/restart, keyboard mode persistence, and mode normalization.
+- `OPhoneMirror.cs`: shared Apple-inspired light UI tokens/controls, current-device selector/list, USB status, scrcpy launch/restart, keyboard mode persistence, and mode normalization.
 - `TransferForm.cs`: matching light two-pane PC/Android file browser, selection, transfer queue, collision confirmation, and large-directory batching.
 - `AdbClient.cs`: quoted ADB execution, UTF-8 shell input, Unicode-safe file transfer, and tar-stream directory receive.
 - `KeyboardCapture.cs`: low-level Windows keyboard hook active only when a tracked scrcpy window owns foreground focus.
@@ -32,7 +32,7 @@ display name|model description|adb serial|window x
 
 The executable reads this file beside itself. Missing/invalid entries become disabled “未配置设备” cards. Never restore hard-coded serials, IP addresses, usernames, or absolute user paths in tracked source.
 
-Keyboard, screen-off, and always-on-top settings live under `%LOCALAPPDATA%\OPhoneMirror`; they are runtime state, not repository content.
+Keyboard, screen-off, always-on-top, and last-selected-device settings live under `%LOCALAPPDATA%\OPhoneMirror`; they are runtime state, not repository content.
 
 ## Verified implementation facts
 
@@ -40,6 +40,9 @@ Keyboard, screen-off, and always-on-top settings live under `%LOCALAPPDATA%\OPho
 - The persisted “仅熄手机屏幕” setting is hot-applied through the one existing primary mirror only. It temporarily focuses that window and uses scrcpy's documented `MOD+O` for display-off. For display-on it issues a real right-click at the mirror center (SDL ignores posted background mouse events), then restores both cursor position and the previous foreground window. Never add `--turn-screen-off` to the launch arguments or start a second control-only scrcpy instance: multiple long-lived scrcpy servers proved unstable on the Reno6 USB transport. `KEYCODE_WAKEUP` is only a fallback for screen-on.
 - Reno6 repeatedly entered ADB `offline` with the ADB `37.0.0` bundled by scrcpy 4.1, including while no OPhoneMirror/scrcpy process was running. Starting the separately installed Platform Tools ADB `37.0.1-15733141` immediately restored `device`. Release builds must therefore pass `-AdbDir` and bundle `adb.exe`, `AdbWinApi.dll`, and `AdbWinUsbApi.dll` from that tested runtime.
 - Periodic ADB probes run on the thread pool behind an interlocked single-flight guard so a slow/offline USB transport cannot freeze the WinForms UI.
+- The main window presents one active device. Clicking its selector opens a two-row device list; selection is persisted by index and updates the launch/transfer actions without changing the per-device scrcpy process state.
+- UI text uses `Microsoft YaHei UI` for crisp Chinese GDI rendering and `Segoe UI` only for the Latin product wordmark. Standard actions are vector-drawn icons with tooltips and accessible names; no emoji or bitmap icon font is required.
+- `ModernButton` owns a rounded Win32 `Region`, not only a painted rounded path. Keep that region update on resize: it prevents the native rectangular disabled-button background from leaking through as black corner triangles.
 - Input modes are deliberately different:
   - Short-phrase mode uses scrcpy default SDK keyboard and adds no `--keyboard`, `--raw-key-events`, or `--prefer-text` flag.
   - Numeric-candidate mode adds only `--keyboard=uhid`.
@@ -64,7 +67,7 @@ Keyboard, screen-off, and always-on-top settings live under `%LOCALAPPDATA%\OPho
 Canonical build:
 
 ```powershell
-.\build.ps1 -ScrcpyDir "C:\path\to\scrcpy-win64-v4.1"
+.\build.ps1 -ScrcpyDir "C:\path\to\scrcpy-win64-v4.1" -AdbDir "C:\path\to\platform-tools"
 ```
 
 Expected output:

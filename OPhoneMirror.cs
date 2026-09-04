@@ -12,8 +12,8 @@ using System.Windows.Forms;
 
 [assembly: AssemblyTitle("OPhoneMirror")]
 [assembly: AssemblyProduct("OPhoneMirror")]
-[assembly: AssemblyVersion("1.10.0.0")]
-[assembly: AssemblyFileVersion("1.10.0.0")]
+[assembly: AssemblyVersion("1.11.0.0")]
+[assembly: AssemblyFileVersion("1.11.0.0")]
 
 namespace OPhoneMirror
 {
@@ -27,7 +27,8 @@ namespace OPhoneMirror
 
     internal static class UiTheme
     {
-        public const string FontFamily = "Segoe UI Variable Text";
+        public const string FontFamily = "Microsoft YaHei UI";
+        public const string DisplayFontFamily = "Segoe UI";
         public static readonly Color Background = Color.FromArgb(245, 245, 247);
         public static readonly Color Surface = Color.FromArgb(255, 255, 255);
         public static readonly Color SurfaceRaised = Color.FromArgb(250, 250, 252);
@@ -54,13 +55,178 @@ namespace OPhoneMirror
         Quiet
     }
 
+    internal enum UiIcon
+    {
+        None,
+        Refresh,
+        Mirror,
+        Transfer,
+        ChevronDown,
+        Check,
+        Folder,
+        ArrowUp,
+        More,
+        Trash
+    }
+
+    internal static class UiIconRenderer
+    {
+        public static void Draw(Graphics graphics, UiIcon icon, Rectangle bounds, Color color)
+        {
+            if (icon == UiIcon.None)
+                return;
+
+            graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            float scale = Math.Max(0.75F, Math.Min(bounds.Width, bounds.Height) / 24F);
+            float left = bounds.Left;
+            float top = bounds.Top;
+            using (Pen pen = new Pen(color, 1.8F * scale))
+            using (SolidBrush brush = new SolidBrush(color))
+            {
+                pen.StartCap = LineCap.Round;
+                pen.EndCap = LineCap.Round;
+                pen.LineJoin = LineJoin.Round;
+
+                if (icon == UiIcon.Refresh)
+                {
+                    RectangleF arc = new RectangleF(left + 4 * scale, top + 4 * scale, 16 * scale, 16 * scale);
+                    graphics.DrawArc(pen, arc, -42, 285);
+                    PointF tip = new PointF(left + 20.2F * scale, top + 5.3F * scale);
+                    graphics.DrawLines(pen, new PointF[]
+                    {
+                        new PointF(left + 15.8F * scale, top + 4.4F * scale),
+                        tip,
+                        new PointF(left + 19.2F * scale, top + 9.6F * scale)
+                    });
+                }
+                else if (icon == UiIcon.Mirror)
+                {
+                    RectangleF screen = new RectangleF(left + 3 * scale, top + 4 * scale, 18 * scale, 13 * scale);
+                    graphics.DrawRoundedRectangle(pen, screen, 2.5F * scale);
+                    graphics.DrawLine(pen, left + 9 * scale, top + 21 * scale, left + 15 * scale, top + 21 * scale);
+                    graphics.DrawLine(pen, left + 12 * scale, top + 17 * scale, left + 12 * scale, top + 21 * scale);
+                    PointF[] play = new PointF[]
+                    {
+                        new PointF(left + 10 * scale, top + 8 * scale),
+                        new PointF(left + 10 * scale, top + 14 * scale),
+                        new PointF(left + 15 * scale, top + 11 * scale)
+                    };
+                    graphics.FillPolygon(brush, play);
+                }
+                else if (icon == UiIcon.Transfer)
+                {
+                    graphics.DrawLine(pen, left + 4 * scale, top + 8 * scale, left + 17 * scale, top + 8 * scale);
+                    graphics.DrawLines(pen, new PointF[]
+                    {
+                        new PointF(left + 14 * scale, top + 5 * scale),
+                        new PointF(left + 18 * scale, top + 8 * scale),
+                        new PointF(left + 14 * scale, top + 11 * scale)
+                    });
+                    graphics.DrawLine(pen, left + 20 * scale, top + 16 * scale, left + 7 * scale, top + 16 * scale);
+                    graphics.DrawLines(pen, new PointF[]
+                    {
+                        new PointF(left + 10 * scale, top + 13 * scale),
+                        new PointF(left + 6 * scale, top + 16 * scale),
+                        new PointF(left + 10 * scale, top + 19 * scale)
+                    });
+                }
+                else if (icon == UiIcon.ChevronDown)
+                {
+                    graphics.DrawLines(pen, new PointF[]
+                    {
+                        new PointF(left + 6 * scale, top + 9 * scale),
+                        new PointF(left + 12 * scale, top + 15 * scale),
+                        new PointF(left + 18 * scale, top + 9 * scale)
+                    });
+                }
+                else if (icon == UiIcon.Check)
+                {
+                    graphics.DrawLines(pen, new PointF[]
+                    {
+                        new PointF(left + 5 * scale, top + 12 * scale),
+                        new PointF(left + 10 * scale, top + 17 * scale),
+                        new PointF(left + 19 * scale, top + 7 * scale)
+                    });
+                }
+                else if (icon == UiIcon.Folder)
+                {
+                    using (GraphicsPath folder = new GraphicsPath())
+                    {
+                        folder.AddLines(new PointF[]
+                        {
+                            new PointF(left + 3 * scale, top + 7 * scale),
+                            new PointF(left + 9 * scale, top + 7 * scale),
+                            new PointF(left + 11 * scale, top + 9 * scale),
+                            new PointF(left + 21 * scale, top + 9 * scale),
+                            new PointF(left + 20 * scale, top + 19 * scale),
+                            new PointF(left + 4 * scale, top + 19 * scale)
+                        });
+                        folder.CloseFigure();
+                        graphics.DrawPath(pen, folder);
+                    }
+                }
+                else if (icon == UiIcon.ArrowUp)
+                {
+                    graphics.DrawLine(pen, left + 12 * scale, top + 19 * scale, left + 12 * scale, top + 5 * scale);
+                    graphics.DrawLines(pen, new PointF[]
+                    {
+                        new PointF(left + 6 * scale, top + 11 * scale),
+                        new PointF(left + 12 * scale, top + 5 * scale),
+                        new PointF(left + 18 * scale, top + 11 * scale)
+                    });
+                }
+                else if (icon == UiIcon.More)
+                {
+                    graphics.FillEllipse(brush, left + 4 * scale, top + 10 * scale, 3 * scale, 3 * scale);
+                    graphics.FillEllipse(brush, left + 10.5F * scale, top + 10 * scale, 3 * scale, 3 * scale);
+                    graphics.FillEllipse(brush, left + 17 * scale, top + 10 * scale, 3 * scale, 3 * scale);
+                }
+                else if (icon == UiIcon.Trash)
+                {
+                    graphics.DrawLine(pen, left + 6 * scale, top + 7 * scale, left + 18 * scale, top + 7 * scale);
+                    graphics.DrawLine(pen, left + 9 * scale, top + 4 * scale, left + 15 * scale, top + 4 * scale);
+                    graphics.DrawRoundedRectangle(pen, new RectangleF(left + 7 * scale, top + 8 * scale, 10 * scale, 12 * scale), 1.5F * scale);
+                    graphics.DrawLine(pen, left + 10 * scale, top + 11 * scale, left + 10 * scale, top + 17 * scale);
+                    graphics.DrawLine(pen, left + 14 * scale, top + 11 * scale, left + 14 * scale, top + 17 * scale);
+                }
+            }
+        }
+
+        private static void DrawRoundedRectangle(this Graphics graphics, Pen pen, RectangleF bounds, float radius)
+        {
+            float diameter = radius * 2;
+            using (GraphicsPath path = new GraphicsPath())
+            {
+                path.AddArc(bounds.Left, bounds.Top, diameter, diameter, 180, 90);
+                path.AddArc(bounds.Right - diameter, bounds.Top, diameter, diameter, 270, 90);
+                path.AddArc(bounds.Right - diameter, bounds.Bottom - diameter, diameter, diameter, 0, 90);
+                path.AddArc(bounds.Left, bounds.Bottom - diameter, diameter, diameter, 90, 90);
+                path.CloseFigure();
+                graphics.DrawPath(pen, path);
+            }
+        }
+    }
+
     internal sealed class ModernButton : Button
     {
         private bool hovered;
         private bool pressed;
+        private int cornerRadius = 10;
 
         public UiButtonKind Kind = UiButtonKind.Secondary;
-        public int CornerRadius = 10;
+        public UiIcon Icon = UiIcon.None;
+        public bool IconOnly;
+        public int IconSize = 20;
+        public int CornerRadius
+        {
+            get { return cornerRadius; }
+            set
+            {
+                cornerRadius = Math.Max(2, value);
+                UpdateRoundedRegion();
+                Invalidate();
+            }
+        }
 
         public ModernButton()
         {
@@ -73,6 +239,36 @@ namespace OPhoneMirror
             UseVisualStyleBackColor = false;
             Cursor = Cursors.Hand;
             TabStop = true;
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            UpdateRoundedRegion();
+        }
+
+        protected override void OnParentChanged(EventArgs e)
+        {
+            base.OnParentChanged(e);
+            UpdateRoundedRegion();
+        }
+
+        protected override void OnPaintBackground(PaintEventArgs pevent)
+        {
+            pevent.Graphics.Clear(Parent == null ? BackColor : Parent.BackColor);
+        }
+
+        private void UpdateRoundedRegion()
+        {
+            if (Width < 2 || Height < 2)
+                return;
+
+            int radius = Math.Min(cornerRadius, Math.Min(Width, Height) / 2);
+            Region previous = Region;
+            using (GraphicsPath path = RoundedPanel.CreateRoundedRect(new Rectangle(0, 0, Width, Height), radius))
+                Region = new Region(path);
+            if (previous != null)
+                previous.Dispose();
         }
 
         protected override void OnMouseEnter(EventArgs e)
@@ -152,13 +348,35 @@ namespace OPhoneMirror
                 e.Graphics.DrawPath(pen, path);
             }
 
-            TextRenderer.DrawText(
-                e.Graphics,
-                Text,
-                Font,
-                bounds,
-                content,
-                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+            if (Icon != UiIcon.None)
+            {
+                int size = Math.Min(IconSize, Math.Min(Width - 8, Height - 8));
+                Rectangle iconBounds;
+                if (IconOnly || string.IsNullOrEmpty(Text))
+                {
+                    iconBounds = new Rectangle((Width - size) / 2, (Height - size) / 2, size, size);
+                }
+                else
+                {
+                    iconBounds = new Rectangle(13, (Height - size) / 2, size, size);
+                }
+                UiIconRenderer.Draw(e.Graphics, Icon, iconBounds, content);
+            }
+
+            if (!IconOnly && !string.IsNullOrEmpty(Text))
+            {
+                Rectangle textBounds = Icon == UiIcon.None
+                    ? bounds
+                    : new Rectangle(41, 0, Math.Max(0, Width - 50), Height);
+                TextRenderer.DrawText(
+                    e.Graphics,
+                    Text,
+                    Font,
+                    textBounds,
+                    content,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
+                        TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+            }
 
             if (Focused && ShowFocusCues)
             {
@@ -328,7 +546,8 @@ namespace OPhoneMirror
                 Font,
                 textBounds,
                 Enabled ? UiTheme.Text : UiTheme.TextDim,
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
+                    TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
 
             if (Focused && ShowFocusCues)
             {
@@ -469,7 +688,8 @@ namespace OPhoneMirror
                     Font,
                     item,
                     index == selectedIndex ? Color.White : UiTheme.TextMuted,
-                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
+                        TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
             }
 
             if (Focused && ShowFocusCues)
@@ -604,16 +824,179 @@ namespace OPhoneMirror
         }
     }
 
+    internal sealed class DeviceSelectRow : Control
+    {
+        private DeviceCard device;
+        private bool hovered;
+
+        public event EventHandler DeviceChosen;
+        public bool Selected;
+        public bool ShowsChevron;
+
+        public DeviceCard Device
+        {
+            get { return device; }
+            set
+            {
+                device = value;
+                UpdateAccessibility();
+                Invalidate();
+            }
+        }
+
+        public DeviceSelectRow()
+        {
+            SetStyle(ControlStyles.UserPaint |
+                ControlStyles.AllPaintingInWmPaint |
+                ControlStyles.OptimizedDoubleBuffer |
+                ControlStyles.ResizeRedraw |
+                ControlStyles.SupportsTransparentBackColor, true);
+            BackColor = Color.Transparent;
+            Cursor = Cursors.Hand;
+            TabStop = true;
+            AccessibleRole = AccessibleRole.ListItem;
+            Font = new Font(UiTheme.FontFamily, 9F, FontStyle.Regular);
+        }
+
+        public void UpdateStatus()
+        {
+            UpdateAccessibility();
+            Invalidate();
+        }
+
+        private void UpdateAccessibility()
+        {
+            if (device == null)
+                return;
+            AccessibleName = device.Name;
+            AccessibleDescription = device.Model + "，" + (device.IsOnline ? "USB 已连接" : "未连接");
+        }
+
+        protected override void OnMouseEnter(EventArgs e)
+        {
+            hovered = true;
+            Invalidate();
+            base.OnMouseEnter(e);
+        }
+
+        protected override void OnMouseLeave(EventArgs e)
+        {
+            hovered = false;
+            Invalidate();
+            base.OnMouseLeave(e);
+        }
+
+        protected override void OnClick(EventArgs e)
+        {
+            Focus();
+            EventHandler handler = DeviceChosen;
+            if (handler != null)
+                handler(this, EventArgs.Empty);
+            base.OnClick(e);
+        }
+
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Enter || e.KeyCode == Keys.Space ||
+                (ShowsChevron && (e.KeyCode == Keys.Down || e.KeyCode == Keys.Up)))
+            {
+                OnClick(EventArgs.Empty);
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
+            base.OnKeyDown(e);
+        }
+
+        protected override void OnGotFocus(EventArgs e)
+        {
+            Invalidate();
+            base.OnGotFocus(e);
+        }
+
+        protected override void OnLostFocus(EventArgs e)
+        {
+            Invalidate();
+            base.OnLostFocus(e);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            Rectangle bounds = new Rectangle(0, 0, Width - 1, Height - 1);
+            Color fill = Selected && !ShowsChevron
+                ? Color.FromArgb(238, 246, 255)
+                : hovered ? UiTheme.SurfaceRaised : UiTheme.Surface;
+            using (GraphicsPath path = RoundedPanel.CreateRoundedRect(bounds, 12))
+            using (SolidBrush fillBrush = new SolidBrush(fill))
+            {
+                e.Graphics.FillPath(fillBrush, path);
+                if (ShowsChevron)
+                {
+                    using (Pen borderPen = new Pen(UiTheme.Border, 1))
+                        e.Graphics.DrawPath(borderPen, path);
+                }
+            }
+
+            if (device == null)
+                return;
+
+            Rectangle phone = new Rectangle(18, (Height - 30) / 2, 18, 30);
+            using (Pen phonePen = new Pen(device.IsOnline ? UiTheme.Accent : UiTheme.TextDim, 1.8F))
+            using (GraphicsPath phonePath = RoundedPanel.CreateRoundedRect(phone, 5))
+            {
+                phonePen.StartCap = LineCap.Round;
+                phonePen.EndCap = LineCap.Round;
+                e.Graphics.DrawPath(phonePen, phonePath);
+                e.Graphics.DrawLine(phonePen, phone.Left + 6, phone.Bottom - 5, phone.Right - 6, phone.Bottom - 5);
+            }
+
+            int textRightPadding = ShowsChevron ? 130 : 105;
+            Rectangle nameBounds = new Rectangle(52, 10, Math.Max(80, Width - 52 - textRightPadding), 24);
+            Rectangle modelBounds = new Rectangle(52, 34, Math.Max(80, Width - 52 - textRightPadding), 20);
+            using (Font nameFont = new Font(UiTheme.FontFamily, ShowsChevron ? 11F : 9.5F, FontStyle.Bold))
+            {
+                TextRenderer.DrawText(e.Graphics, device.Name, nameFont, nameBounds, UiTheme.Text,
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+            }
+            TextRenderer.DrawText(e.Graphics, device.Model, Font, modelBounds, UiTheme.TextMuted,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+
+            string status = device.IsOnline ? "已连接" : "未连接";
+            int statusRight = ShowsChevron ? Width - 46 : Selected ? Width - 48 : Width - 18;
+            int statusWidth = 62;
+            Rectangle statusBounds = new Rectangle(statusRight - statusWidth, 0, statusWidth, Height);
+            TextRenderer.DrawText(e.Graphics, status, Font, statusBounds,
+                device.IsOnline ? UiTheme.Success : UiTheme.TextDim,
+                TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+            using (SolidBrush dot = new SolidBrush(device.IsOnline ? UiTheme.Success : UiTheme.Offline))
+                e.Graphics.FillEllipse(dot, statusBounds.Left - 10, (Height - 7) / 2, 7, 7);
+
+            if (ShowsChevron)
+            {
+                UiIconRenderer.Draw(e.Graphics, UiIcon.ChevronDown,
+                    new Rectangle(Width - 34, (Height - 18) / 2, 18, 18), UiTheme.TextMuted);
+            }
+            else if (Selected)
+            {
+                UiIconRenderer.Draw(e.Graphics, UiIcon.Check,
+                    new Rectangle(Width - 31, (Height - 18) / 2, 18, 18), UiTheme.Accent);
+            }
+
+            if (Focused && ShowFocusCues)
+            {
+                using (GraphicsPath focusPath = RoundedPanel.CreateRoundedRect(Rectangle.Inflate(bounds, -2, -2), 10))
+                using (Pen focusPen = new Pen(UiTheme.Accent, 2))
+                    e.Graphics.DrawPath(focusPen, focusPath);
+            }
+        }
+    }
+
     internal sealed class DeviceCard
     {
         public string Name;
         public string Model;
         public string Serial;
-        public Label StatusLabel;
-        public StatusDot StatusDot;
-        public RoundedPanel StatusBadge;
-        public Button LaunchButton;
-        public Button TransferButton;
+        public bool IsOnline;
         public int WindowX;
         public Process MirrorProcess;
         public int MirrorProcessId;
@@ -700,15 +1083,25 @@ namespace OPhoneMirror
         private readonly string scrcpyPath;
         private readonly DeviceCard device1;
         private readonly DeviceCard device2;
+        private DeviceCard activeDevice;
         private readonly Timer refreshTimer;
         private readonly Timer restartTimer;
         private readonly Label footerStatus;
         private readonly ModeSelector keyboardModeSelector;
         private readonly ToggleSwitch screenOffToggle;
         private readonly ToggleSwitch alwaysOnTopToggle;
+        private readonly DeviceSelectRow activeDeviceRow;
+        private readonly DeviceSelectRow device1Row;
+        private readonly DeviceSelectRow device2Row;
+        private readonly RoundedPanel deviceListPanel;
+        private readonly RoundedPanel settingsPanel;
+        private readonly ModernButton launchButton;
+        private readonly ModernButton transferButton;
+        private readonly ToolTip toolTip;
         private readonly string settingsPath;
         private readonly string screenOffSettingsPath;
         private readonly string alwaysOnTopSettingsPath;
+        private readonly string selectedDeviceSettingsPath;
         private readonly List<DeviceCard> pendingRestart = new List<DeviceCard>();
         private readonly KeyboardCapture keyboardCapture;
         private int keyboardMode;
@@ -729,145 +1122,210 @@ namespace OPhoneMirror
             alwaysOnTopSettingsPath = Path.Combine(
                 Path.GetDirectoryName(settingsPath),
                 "always-on-top-enabled.txt");
+            selectedDeviceSettingsPath = Path.Combine(
+                Path.GetDirectoryName(settingsPath),
+                "selected-device.txt");
             keyboardMode = LoadKeyboardMode();
+            toolTip = new ToolTip();
+            toolTip.AutoPopDelay = 5000;
+            toolTip.InitialDelay = 450;
+            toolTip.ReshowDelay = 100;
 
             Text = "OPhoneMirror · 手机有线投屏";
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(820, 580);
-            MinimumSize = new Size(836, 619);
+            ClientSize = new Size(700, 530);
+            MinimumSize = new Size(716, 569);
             BackColor = background;
             ForeColor = foreground;
             Font = new Font(UiTheme.FontFamily, 9F, FontStyle.Regular, GraphicsUnit.Point);
             AutoScaleMode = AutoScaleMode.Dpi;
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
+            KeyPreview = true;
 
             Label title = new Label();
             title.Text = "OPhoneMirror";
-            title.Font = new Font(UiTheme.FontFamily, 25F, FontStyle.Bold);
+            title.Font = new Font(UiTheme.DisplayFontFamily, 23F, FontStyle.Bold);
             title.ForeColor = foreground;
             title.AutoSize = true;
-            title.Location = new Point(32, 26);
+            title.Location = new Point(32, 22);
             Controls.Add(title);
 
             Label subtitle = new Label();
-            subtitle.Text = "让 Android 与电脑自然协作";
-            subtitle.Font = new Font(UiTheme.FontFamily, 10F);
+            subtitle.Text = "Android 投屏与控制";
+            subtitle.Font = new Font(UiTheme.FontFamily, 9.5F);
             subtitle.ForeColor = muted;
             subtitle.AutoSize = true;
-            subtitle.Location = new Point(35, 75);
+            subtitle.Location = new Point(35, 63);
             Controls.Add(subtitle);
 
-            Button refresh = MakeSecondaryButton("刷新设备");
-            refresh.Location = new Point(680, 34);
-            refresh.Size = new Size(108, 38);
+            ModernButton refresh = MakeIconButton(UiIcon.Refresh, "刷新设备", UiButtonKind.Secondary);
+            refresh.Location = new Point(628, 27);
+            refresh.Size = new Size(40, 40);
+            refresh.CornerRadius = 20;
             refresh.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             refresh.Click += delegate { RefreshDevices(); };
             Controls.Add(refresh);
+            toolTip.SetToolTip(refresh, "刷新设备");
 
             List<DeviceDefinition> definitions = LoadDeviceDefinitions();
-            device1 = CreateDeviceCard(definitions[0], 32, 116);
-            device2 = CreateDeviceCard(definitions[1], 422, 116);
+            device1 = CreateDevice(definitions[0]);
+            device2 = CreateDevice(definitions[1]);
+            activeDevice = LoadSelectedDeviceIndex() == 1 ? device2 : device1;
 
-            RoundedPanel info = new RoundedPanel();
+            RoundedPanel devicePanel = new RoundedPanel();
+            devicePanel.Name = "activeDevicePanel";
+            devicePanel.BackColor = card;
+            devicePanel.BorderColor = Color.FromArgb(232, 232, 236);
+            devicePanel.Shadow = true;
+            devicePanel.Location = new Point(32, 94);
+            devicePanel.Size = new Size(636, 190);
+            Controls.Add(devicePanel);
+
+            activeDeviceRow = new DeviceSelectRow();
+            activeDeviceRow.Name = "activeDeviceSelector";
+            activeDeviceRow.Device = activeDevice;
+            activeDeviceRow.ShowsChevron = true;
+            activeDeviceRow.Location = new Point(18, 16);
+            activeDeviceRow.Size = new Size(600, 66);
+            activeDeviceRow.DeviceChosen += delegate { ToggleDeviceList(); };
+            devicePanel.Controls.Add(activeDeviceRow);
+            toolTip.SetToolTip(activeDeviceRow, "选择设备");
+
+            Panel deviceDivider = new Panel();
+            deviceDivider.BackColor = UiTheme.Border;
+            deviceDivider.Location = new Point(24, 94);
+            deviceDivider.Size = new Size(588, 1);
+            devicePanel.Controls.Add(deviceDivider);
+
+            launchButton = MakeIconButton(UiIcon.Mirror, "启动有线投屏", UiButtonKind.Primary);
+            launchButton.Location = new Point(258, 112);
+            launchButton.Size = new Size(56, 52);
+            launchButton.CornerRadius = 15;
+            launchButton.Enabled = false;
+            launchButton.Click += delegate
+            {
+                CloseDeviceList();
+                LaunchDevice(activeDevice);
+            };
+            devicePanel.Controls.Add(launchButton);
+            toolTip.SetToolTip(launchButton, "启动有线投屏");
+
+            transferButton = MakeIconButton(UiIcon.Transfer, "文件互传", UiButtonKind.Secondary);
+            transferButton.Location = new Point(322, 112);
+            transferButton.Size = new Size(56, 52);
+            transferButton.CornerRadius = 15;
+            transferButton.Enabled = false;
+            transferButton.Click += delegate
+            {
+                CloseDeviceList();
+                OpenTransfer(activeDevice);
+            };
+            devicePanel.Controls.Add(transferButton);
+            toolTip.SetToolTip(transferButton, "文件互传");
+
+            settingsPanel = new RoundedPanel();
+            RoundedPanel info = settingsPanel;
             info.Name = "optionsPanel";
             info.BackColor = card;
             info.BorderColor = Color.FromArgb(232, 232, 236);
             info.Shadow = true;
-            info.Location = new Point(32, 358);
-            info.Size = new Size(756, 164);
+            info.Location = new Point(32, 306);
+            info.Size = new Size(636, 154);
             info.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
 
             Label infoTitle = new Label();
-            infoTitle.Text = "投屏偏好";
+            infoTitle.Text = "设置";
             infoTitle.ForeColor = foreground;
             infoTitle.Font = new Font(UiTheme.FontFamily, 11F, FontStyle.Bold);
             infoTitle.AutoSize = true;
-            infoTitle.Location = new Point(22, 17);
+            infoTitle.Location = new Point(22, 16);
             info.Controls.Add(infoTitle);
-
-            Label infoCaption = new Label();
-            infoCaption.Text = "所有设置都会记住，并立即应用到正在运行的投屏";
-            infoCaption.ForeColor = muted;
-            infoCaption.AutoSize = true;
-            infoCaption.Location = new Point(22, 46);
-            info.Controls.Add(infoCaption);
 
             screenOffToggle = new ToggleSwitch();
             screenOffToggle.Text = "仅熄手机屏幕";
-            screenOffToggle.Location = new Point(18, 78);
+            screenOffToggle.Location = new Point(18, 49);
             screenOffToggle.Size = new Size(180, 40);
             screenOffToggle.Checked = LoadScreenOffSetting();
             screenOffToggle.CheckedChanged += ScreenOffSettingChanged;
             info.Controls.Add(screenOffToggle);
-
-            Label screenOffHint = new Label();
-            screenOffHint.Text = "镜像保持显示，手机更省电";
-            screenOffHint.ForeColor = muted;
-            screenOffHint.Font = new Font(UiTheme.FontFamily, 8F);
-            screenOffHint.AutoSize = true;
-            screenOffHint.Location = new Point(24, 125);
-            info.Controls.Add(screenOffHint);
-
-            Panel firstDivider = new Panel();
-            firstDivider.BackColor = UiTheme.Border;
-            firstDivider.Location = new Point(211, 78);
-            firstDivider.Size = new Size(1, 62);
-            info.Controls.Add(firstDivider);
+            toolTip.SetToolTip(screenOffToggle, "关闭手机实体屏幕，投屏保持运行");
 
             alwaysOnTopToggle = new ToggleSwitch();
             alwaysOnTopToggle.Text = "保持在最顶层";
-            alwaysOnTopToggle.Location = new Point(224, 78);
+            alwaysOnTopToggle.Location = new Point(218, 49);
             alwaysOnTopToggle.Size = new Size(184, 40);
             alwaysOnTopToggle.Checked = LoadAlwaysOnTopSetting();
             alwaysOnTopToggle.CheckedChanged += AlwaysOnTopSettingChanged;
             info.Controls.Add(alwaysOnTopToggle);
+            toolTip.SetToolTip(alwaysOnTopToggle, "让投屏窗口保持在其他窗口上方");
 
-            Label alwaysOnTopHint = new Label();
-            alwaysOnTopHint.Text = "需要时也可允许其他窗口覆盖";
-            alwaysOnTopHint.ForeColor = muted;
-            alwaysOnTopHint.Font = new Font(UiTheme.FontFamily, 8F);
-            alwaysOnTopHint.AutoSize = true;
-            alwaysOnTopHint.Location = new Point(230, 125);
-            info.Controls.Add(alwaysOnTopHint);
-
-            Panel secondDivider = new Panel();
-            secondDivider.BackColor = UiTheme.Border;
-            secondDivider.Location = new Point(422, 78);
-            secondDivider.Size = new Size(1, 62);
-            info.Controls.Add(secondDivider);
+            Panel settingsDivider = new Panel();
+            settingsDivider.BackColor = UiTheme.Border;
+            settingsDivider.Location = new Point(22, 99);
+            settingsDivider.Size = new Size(592, 1);
+            info.Controls.Add(settingsDivider);
 
             Label keyboardLabel = new Label();
-            keyboardLabel.Text = "键盘输入模式";
+            keyboardLabel.Text = "键盘";
             keyboardLabel.ForeColor = muted;
             keyboardLabel.AutoSize = true;
-            keyboardLabel.Location = new Point(438, 82);
+            keyboardLabel.Location = new Point(24, 117);
             info.Controls.Add(keyboardLabel);
 
             keyboardModeSelector = new ModeSelector();
-            keyboardModeSelector.FirstText = "搜狗短语 · Shift 中英";
-            keyboardModeSelector.SecondText = "数字选词 · Shift+Space";
-            keyboardModeSelector.Location = new Point(438, 106);
-            keyboardModeSelector.Size = new Size(298, 34);
+            keyboardModeSelector.FirstText = "短语";
+            keyboardModeSelector.SecondText = "数字选词";
+            keyboardModeSelector.Location = new Point(84, 108);
+            keyboardModeSelector.Size = new Size(286, 34);
             keyboardModeSelector.SelectedIndex = keyboardMode;
             keyboardModeSelector.SelectedIndexChanged += KeyboardModeChanged;
             info.Controls.Add(keyboardModeSelector);
+            toolTip.SetToolTip(keyboardModeSelector, "短语：Shift 切换中英；数字选词：Shift+Space 切换中英");
             Controls.Add(info);
+
+            deviceListPanel = new RoundedPanel();
+            deviceListPanel.Name = "deviceList";
+            deviceListPanel.BackColor = card;
+            deviceListPanel.BorderColor = UiTheme.Border;
+            deviceListPanel.CornerRadius = 16;
+            deviceListPanel.Shadow = true;
+            deviceListPanel.Location = new Point(50, 294);
+            deviceListPanel.Size = new Size(600, 132);
+            deviceListPanel.Visible = false;
+
+            device1Row = new DeviceSelectRow();
+            device1Row.Device = device1;
+            device1Row.Selected = activeDevice == device1;
+            device1Row.Location = new Point(10, 9);
+            device1Row.Size = new Size(576, 54);
+            device1Row.DeviceChosen += delegate { SelectDevice(device1); };
+            deviceListPanel.Controls.Add(device1Row);
+
+            device2Row = new DeviceSelectRow();
+            device2Row.Device = device2;
+            device2Row.Selected = activeDevice == device2;
+            device2Row.Location = new Point(10, 67);
+            device2Row.Size = new Size(576, 54);
+            device2Row.DeviceChosen += delegate { SelectDevice(device2); };
+            deviceListPanel.Controls.Add(device2Row);
+            Controls.Add(deviceListPanel);
+            deviceListPanel.BringToFront();
 
             footerStatus = new Label();
             footerStatus.Text = "正在检查设备…";
             footerStatus.ForeColor = muted;
             footerStatus.AutoSize = true;
-            footerStatus.Location = new Point(36, 550);
+            footerStatus.Location = new Point(36, 496);
             footerStatus.Anchor = AnchorStyles.Left | AnchorStyles.Bottom;
             Controls.Add(footerStatus);
 
             Label version = new Label();
-            version.Text = "OPhoneMirror 1.10.0 · scrcpy 4.1";
+            version.Text = "OPhoneMirror 1.11.0 · scrcpy 4.1";
             version.ForeColor = muted;
             version.AutoSize = false;
-            version.Location = new Point(520, 545);
-            version.Size = new Size(268, 24);
+            version.Location = new Point(420, 490);
+            version.Size = new Size(248, 24);
             version.TextAlign = ContentAlignment.MiddleRight;
             version.Anchor = AnchorStyles.Right | AnchorStyles.Bottom;
             Controls.Add(version);
@@ -886,11 +1344,21 @@ namespace OPhoneMirror
                 StopScreenControl(device1, true);
                 StopScreenControl(device2, true);
                 keyboardCapture.Dispose();
+                toolTip.Dispose();
             };
             Shown += delegate
             {
                 RefreshDevices();
                 refreshTimer.Start();
+            };
+            KeyDown += delegate(object sender, KeyEventArgs e)
+            {
+                if (e.KeyCode == Keys.Escape && deviceListPanel.Visible)
+                {
+                    CloseDeviceList();
+                    e.Handled = true;
+                    e.SuppressKeyPress = true;
+                }
             };
         }
 
@@ -960,102 +1428,94 @@ namespace OPhoneMirror
             return definitions;
         }
 
-        private DeviceCard CreateDeviceCard(DeviceDefinition definition, int x, int y)
+        private DeviceCard CreateDevice(DeviceDefinition definition)
         {
             DeviceCard device = new DeviceCard();
             device.Name = definition.Name;
             device.Model = definition.Model;
             device.Serial = definition.Serial;
             device.WindowX = definition.WindowX;
-
-            RoundedPanel panel = new RoundedPanel();
-            panel.BackColor = card;
-            panel.Shadow = true;
-            panel.CornerRadius = 18;
-            panel.Location = new Point(x, y);
-            panel.Size = new Size(366, 218);
-            panel.BorderColor = Color.FromArgb(232, 232, 236);
-
-            PhoneGlyph phoneIcon = new PhoneGlyph();
-            phoneIcon.Location = new Point(20, 20);
-            phoneIcon.Size = new Size(56, 56);
-            panel.Controls.Add(phoneIcon);
-
-            Label nameLabel = new Label();
-            nameLabel.Text = device.Name;
-            nameLabel.Font = new Font(UiTheme.FontFamily, 16F, FontStyle.Bold);
-            nameLabel.ForeColor = foreground;
-            nameLabel.AutoSize = true;
-            nameLabel.Location = new Point(92, 23);
-            panel.Controls.Add(nameLabel);
-
-            Label modelLabel = new Label();
-            modelLabel.Text = device.Model;
-            modelLabel.ForeColor = muted;
-            modelLabel.AutoSize = true;
-            modelLabel.Location = new Point(94, 59);
-            panel.Controls.Add(modelLabel);
-
-            device.StatusBadge = new RoundedPanel();
-            device.StatusBadge.BackColor = UiTheme.SurfaceMuted;
-            device.StatusBadge.BorderColor = UiTheme.Border;
-            device.StatusBadge.CornerRadius = 14;
-            device.StatusBadge.Location = new Point(24, 98);
-            device.StatusBadge.Size = new Size(112, 28);
-            panel.Controls.Add(device.StatusBadge);
-
-            device.StatusDot = new StatusDot();
-            device.StatusDot.DotColor = offline;
-            device.StatusDot.Location = new Point(12, 9);
-            device.StatusDot.Size = new Size(10, 10);
-            device.StatusBadge.Controls.Add(device.StatusDot);
-
-            device.StatusLabel = new Label();
-            device.StatusLabel.Text = "未连接";
-            device.StatusLabel.ForeColor = muted;
-            device.StatusLabel.AutoSize = true;
-            device.StatusLabel.Location = new Point(29, 5);
-            device.StatusBadge.Controls.Add(device.StatusLabel);
-
-            device.LaunchButton = MakePrimaryButton("启动有线投屏");
-            device.LaunchButton.Location = new Point(24, 152);
-            device.LaunchButton.Size = new Size(204, 44);
-            device.LaunchButton.Enabled = false;
-            device.LaunchButton.Click += delegate { LaunchDevice(device); };
-            panel.Controls.Add(device.LaunchButton);
-
-            device.TransferButton = MakeSecondaryButton("文件互传");
-            device.TransferButton.Location = new Point(236, 152);
-            device.TransferButton.Size = new Size(106, 44);
-            device.TransferButton.Enabled = false;
-            device.TransferButton.Click += delegate { OpenTransfer(device); };
-            panel.Controls.Add(device.TransferButton);
-
-            Controls.Add(panel);
             return device;
         }
 
-        private Button MakePrimaryButton(string text)
+        private ModernButton MakeIconButton(UiIcon icon, string accessibleName, UiButtonKind kind)
         {
             ModernButton b = new ModernButton();
-            b.Text = text;
-            b.Kind = UiButtonKind.Primary;
-            b.BackColor = accent;
-            b.ForeColor = Color.White;
-            b.Cursor = Cursors.Hand;
-            b.Font = new Font(UiTheme.FontFamily, 9.5F, FontStyle.Bold);
+            b.Text = string.Empty;
+            b.AccessibleName = accessibleName;
+            b.Icon = icon;
+            b.IconOnly = true;
+            b.IconSize = 22;
+            b.Kind = kind;
+            b.BackColor = kind == UiButtonKind.Primary ? accent : card;
+            b.ForeColor = kind == UiButtonKind.Primary ? Color.White : foreground;
+            b.Font = new Font(UiTheme.FontFamily, 9F, FontStyle.Regular);
             return b;
         }
 
-        private Button MakeSecondaryButton(string text)
+        private void ToggleDeviceList()
         {
-            ModernButton b = new ModernButton();
-            b.Text = text;
-            b.Kind = UiButtonKind.Secondary;
-            b.BackColor = card;
-            b.ForeColor = foreground;
-            b.Cursor = Cursors.Hand;
-            return b;
+            deviceListPanel.Visible = !deviceListPanel.Visible;
+            settingsPanel.Visible = !deviceListPanel.Visible;
+            activeDeviceRow.AccessibleDescription = activeDevice.Model + "，" +
+                (activeDevice.IsOnline ? "USB 已连接" : "未连接") + "，" +
+                (deviceListPanel.Visible ? "设备列表已展开" : "设备列表已折叠");
+            if (deviceListPanel.Visible)
+            {
+                deviceListPanel.BringToFront();
+                (activeDevice == device1 ? device1Row : device2Row).Focus();
+            }
+        }
+
+        private void CloseDeviceList()
+        {
+            if (!deviceListPanel.Visible)
+                return;
+            deviceListPanel.Visible = false;
+            settingsPanel.Visible = true;
+            activeDeviceRow.AccessibleDescription = activeDevice.Model + "，" +
+                (activeDevice.IsOnline ? "USB 已连接" : "未连接") + "，设备列表已折叠";
+        }
+
+        private void SelectDevice(DeviceCard device)
+        {
+            activeDevice = device;
+            activeDeviceRow.Device = device;
+            device1Row.Selected = device == device1;
+            device2Row.Selected = device == device2;
+            device1Row.Invalidate();
+            device2Row.Invalidate();
+            launchButton.Enabled = device.IsOnline;
+            transferButton.Enabled = device.IsOnline;
+            SaveSelectedDeviceIndex(device == device2 ? 1 : 0);
+            CloseDeviceList();
+            footerStatus.Text = device.Name + (device.IsOnline ? " 已连接" : " 未连接");
+            activeDeviceRow.Focus();
+        }
+
+        private int LoadSelectedDeviceIndex()
+        {
+            try
+            {
+                return File.ReadAllText(selectedDeviceSettingsPath).Trim() == "1" ? 1 : 0;
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+
+        private void SaveSelectedDeviceIndex(int index)
+        {
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(selectedDeviceSettingsPath));
+                File.WriteAllText(selectedDeviceSettingsPath, index == 1 ? "1" : "0", Encoding.UTF8);
+            }
+            catch
+            {
+                // The selector still works for this session if settings cannot be persisted.
+            }
         }
 
         private void RefreshDevices()
@@ -1136,17 +1596,18 @@ namespace OPhoneMirror
 
         private void SetDeviceState(DeviceCard device, bool connected)
         {
-            device.StatusDot.DotColor = connected ? online : offline;
-            device.StatusDot.Invalidate();
-            device.StatusBadge.BackColor = connected ? Color.FromArgb(234, 247, 237) : UiTheme.SurfaceMuted;
-            device.StatusBadge.BorderColor = connected ? Color.FromArgb(198, 233, 207) : UiTheme.SurfaceMuted;
-            device.StatusBadge.Invalidate();
-            device.StatusLabel.Text = connected ? "USB 已连接" : "未连接";
-            device.StatusLabel.ForeColor = connected ? online : muted;
-            device.LaunchButton.Enabled = connected;
-            device.LaunchButton.BackColor = connected ? accent : UiTheme.SurfaceMuted;
-            device.TransferButton.Enabled = connected;
-            device.TransferButton.ForeColor = connected ? foreground : muted;
+            device.IsOnline = connected;
+            if (device == device1)
+                device1Row.UpdateStatus();
+            else if (device == device2)
+                device2Row.UpdateStatus();
+
+            if (device == activeDevice)
+            {
+                activeDeviceRow.UpdateStatus();
+                launchButton.Enabled = connected;
+                transferButton.Enabled = connected;
+            }
         }
 
         private void LaunchDevice(DeviceCard device)

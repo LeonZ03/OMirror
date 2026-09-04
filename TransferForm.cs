@@ -55,6 +55,7 @@ namespace OPhoneMirror
         private readonly ProgressBar progress;
         private readonly Label statusLabel;
         private readonly BackgroundWorker transferWorker;
+        private readonly ToolTip toolTip;
         private Button remoteMoreButton;
 
         private string localPath;
@@ -68,6 +69,7 @@ namespace OPhoneMirror
         {
             this.deviceName = deviceName;
             adb = new AdbClient(adbPath, serial);
+            toolTip = new ToolTip();
 
             string downloads = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
@@ -169,7 +171,7 @@ namespace OPhoneMirror
             taskTitle.Location = new Point(14, 12);
             taskPanel.Controls.Add(taskTitle);
 
-            clearTasksButton = MakeToolbarButton("清除记录");
+            clearTasksButton = MakeToolbarIcon(UiIcon.Trash, "清除记录");
             clearTasksButton.Click += delegate { taskGrid.Rows.Clear(); };
             taskPanel.Controls.Add(clearTasksButton);
 
@@ -194,6 +196,7 @@ namespace OPhoneMirror
             transferWorker.RunWorkerCompleted += TransferWorkerCompleted;
 
             Resize += delegate { LayoutControls(); };
+            FormClosed += delegate { toolTip.Dispose(); };
             Shown += delegate
             {
                 LayoutControls();
@@ -210,7 +213,7 @@ namespace OPhoneMirror
             localPanel.Controls.Add(MakePaneCaption("选择源文件，或选择文件的接收目录"));
             localPanel.Controls.Add(localPathBox);
 
-            Button up = MakeToolbarButton("上一级");
+            Button up = MakeToolbarIcon(UiIcon.ArrowUp, "上一级");
             up.Location = new Point(14, 110);
             up.Click += delegate
             {
@@ -220,18 +223,18 @@ namespace OPhoneMirror
             };
             localPanel.Controls.Add(up);
 
-            Button refresh = MakeToolbarButton("刷新");
-            refresh.Location = new Point(100, 110);
+            Button refresh = MakeToolbarIcon(UiIcon.Refresh, "刷新");
+            refresh.Location = new Point(56, 110);
             refresh.Click += delegate { RefreshLocal(); };
             localPanel.Controls.Add(refresh);
 
-            Button browse = MakeToolbarButton("浏览…");
-            browse.Location = new Point(186, 110);
+            Button browse = MakeToolbarIcon(UiIcon.Folder, "选择电脑目录");
+            browse.Location = new Point(98, 110);
             browse.Click += BrowseLocal;
             localPanel.Controls.Add(browse);
 
             Button newFolder = MakeToolbarButton("新建文件夹");
-            newFolder.Location = new Point(272, 110);
+            newFolder.Location = new Point(140, 110);
             newFolder.Size = new Size(104, 30);
             newFolder.Click += CreateLocalFolder;
             localPanel.Controls.Add(newFolder);
@@ -247,37 +250,36 @@ namespace OPhoneMirror
             remotePanel.Controls.Add(MakePaneCaption("手机共享存储，可直接前往下载或相册目录"));
             remotePanel.Controls.Add(remotePathBox);
 
-            Button up = MakeToolbarButton("上一级");
+            Button up = MakeToolbarIcon(UiIcon.ArrowUp, "上一级");
             up.Location = new Point(14, 110);
             up.Click += delegate { NavigateRemote(AdbClient.RemoteParent(remotePath)); };
             remotePanel.Controls.Add(up);
 
-            Button refresh = MakeToolbarButton("刷新");
-            refresh.Location = new Point(100, 110);
+            Button refresh = MakeToolbarIcon(UiIcon.Refresh, "刷新");
+            refresh.Location = new Point(56, 110);
             refresh.Click += delegate { RefreshRemote(); };
             remotePanel.Controls.Add(refresh);
 
             Button downloads = MakeToolbarButton("Download");
-            downloads.Location = new Point(186, 110);
+            downloads.Location = new Point(98, 110);
             downloads.Size = new Size(92, 30);
             downloads.Click += delegate { NavigateRemote("/sdcard/Download"); };
             remotePanel.Controls.Add(downloads);
 
             Button newFolder = MakeToolbarButton("新建文件夹");
-            newFolder.Location = new Point(286, 110);
+            newFolder.Location = new Point(198, 110);
             newFolder.Size = new Size(96, 30);
             newFolder.Click += CreateRemoteFolder;
             remotePanel.Controls.Add(newFolder);
 
             Button dcim = MakeToolbarButton("DCIM");
-            dcim.Location = new Point(390, 110);
+            dcim.Location = new Point(302, 110);
             dcim.Size = new Size(62, 30);
             dcim.Click += delegate { NavigateRemote("/sdcard/DCIM"); };
             remotePanel.Controls.Add(dcim);
 
-            remoteMoreButton = MakeToolbarButton("更多");
-            remoteMoreButton.Location = new Point(460, 110);
-            remoteMoreButton.Size = new Size(62, 30);
+            remoteMoreButton = MakeToolbarIcon(UiIcon.More, "显示更多文件");
+            remoteMoreButton.Location = new Point(372, 110);
             remoteMoreButton.Enabled = false;
             remoteMoreButton.Click += delegate { AddRemoteBatch(); };
             remotePanel.Controls.Add(remoteMoreButton);
@@ -312,8 +314,8 @@ namespace OPhoneMirror
                 int taskTop = paneTop + paneHeight + 16;
                 int taskHeight = ClientSize.Height - taskTop - margin;
                 taskPanel.SetBounds(margin, taskTop, ClientSize.Width - margin * 2, taskHeight);
-                clearTasksButton.SetBounds(taskPanel.Width - 104, 9, 88, 31);
-                statusLabel.SetBounds(126, 17, taskPanel.Width - 250, 22);
+                clearTasksButton.SetBounds(taskPanel.Width - 50, 9, 34, 31);
+                statusLabel.SetBounds(126, 17, taskPanel.Width - 196, 22);
                 progress.SetBounds(14, 45, taskPanel.Width - 28, 4);
                 taskGrid.SetBounds(14, 55, taskPanel.Width - 28, Math.Max(80, taskPanel.Height - 69));
             }
@@ -377,6 +379,19 @@ namespace OPhoneMirror
             button.BackColor = panelColor;
             button.ForeColor = text;
             button.Cursor = Cursors.Hand;
+            return button;
+        }
+
+        private Button MakeToolbarIcon(UiIcon icon, string accessibleName)
+        {
+            ModernButton button = (ModernButton)MakeToolbarButton(string.Empty);
+            button.Icon = icon;
+            button.IconOnly = true;
+            button.IconSize = 18;
+            button.AccessibleName = accessibleName;
+            button.Size = new Size(34, 30);
+            button.CornerRadius = 9;
+            toolTip.SetToolTip(button, accessibleName);
             return button;
         }
 
