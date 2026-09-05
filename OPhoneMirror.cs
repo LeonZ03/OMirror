@@ -1342,6 +1342,8 @@ namespace OPhoneMirror
         public bool IsOnline;
         public bool MirrorActive;
         public int WindowX;
+        public int LastWindowX;
+        public int LastWindowY;
         public Process MirrorProcess;
         public int MirrorProcessId;
         public bool MirrorStarting;
@@ -1881,6 +1883,8 @@ namespace OPhoneMirror
             device.Model = definition.Model;
             device.Serial = definition.Serial;
             device.WindowX = definition.WindowX;
+            device.LastWindowX = definition.WindowX;
+            device.LastWindowY = 80;
             return device;
         }
 
@@ -2475,6 +2479,8 @@ namespace OPhoneMirror
                         device.RunningSinceUtc = DateTime.UtcNow;
                         UpdateMirrorAction(device);
                         footerStatus.Text = device.Name + " 正在投屏 · " + KeyboardModeName();
+                        if (screenOffToggle.Checked)
+                            StartScreenControl(device);
                         ResetRecoveryAfterStableRun(device, sessionGeneration);
                     });
                 }
@@ -2607,9 +2613,9 @@ namespace OPhoneMirror
                 bool normalizeShortPhrase = keyboardMode == 0 && previousDeviceMode == 1;
                 string keyboardArg = keyboardMode == 1 ? " --keyboard=uhid" : string.Empty;
                 string args = string.Format(
-                    "--serial={0} --window-title=\"{1} USB Low Latency\" --video-codec=h264 --max-fps=60 --video-bit-rate=16M --video-buffer=0 --no-audio --shortcut-mod=lalt --window-x={2} --window-y=80 --window-width=450 --window-height=900 -V {4}{3}",
-                    device.Serial, device.Name, device.WindowX, keyboardArg,
-                    Diagnostics.DebugEnabled ? "debug" : "info");
+                    "--serial={0} --window-title=\"{1} USB Low Latency\" --video-codec=h264 --max-fps=60 --video-bit-rate=16M --video-buffer=0 --no-audio --shortcut-mod=lalt --window-x={2} --window-y={5} --window-width=450 --window-height=900 -V {4}{3}",
+                    device.Serial, device.Name, device.LastWindowX, keyboardArg,
+                    Diagnostics.DebugEnabled ? "debug" : "info", device.LastWindowY);
 
                 ProcessStartInfo psi = new ProcessStartInfo();
                 psi.FileName = scrcpyPath;
@@ -2638,8 +2644,6 @@ namespace OPhoneMirror
                 ApplyTopMostWhenReady(device, mirrorProcess);
                 WatchMirrorStarted(device, mirrorProcess, device.SessionGeneration);
                 SaveDeviceMode(device.Serial, keyboardMode);
-                if (screenOffToggle.Checked)
-                    StartScreenControl(device);
                 if (normalizeShortPhrase)
                     NormalizeShortPhraseModeAsync(device);
             }
@@ -2715,16 +2719,25 @@ namespace OPhoneMirror
             SaveScreenOffSetting();
             if (screenOffToggle.Checked)
             {
-                StartScreenControl(device1);
-                StartScreenControl(device2);
+                ApplyScreenSettingToRunning(device1, true);
+                ApplyScreenSettingToRunning(device2, true);
                 footerStatus.Text = "已开启“仅熄手机屏幕”；正在运行的投屏将热生效";
             }
             else
             {
-                StopScreenControl(device1, true);
-                StopScreenControl(device2, true);
+                ApplyScreenSettingToRunning(device1, false);
+                ApplyScreenSettingToRunning(device2, false);
                 footerStatus.Text = "已关闭“仅熄手机屏幕”；手机实体屏幕正在恢复";
             }
+        }
+
+        private void ApplyScreenSettingToRunning(DeviceCard device, bool turnOff)
+        {
+            // Retain the setting for a later launch without letting an idle device
+            // overwrite the status message for the phone that is actually mirroring.
+            device.ScreenDesiredOff = turnOff;
+            if (IsProcessRunning(device.MirrorProcess))
+                QueueScreenPower(device);
         }
 
         private bool LoadAlwaysOnTopSetting()
@@ -2855,7 +2868,8 @@ namespace OPhoneMirror
         private void StartScreenControl(DeviceCard device)
         {
             device.ScreenDesiredOff = true;
-            QueueScreenPower(device);
+            if (IsProcessRunning(device.MirrorProcess))
+                QueueScreenPower(device);
         }
 
         private void StopScreenControl(DeviceCard device, bool wakeDevice)
@@ -2866,7 +2880,8 @@ namespace OPhoneMirror
                 return;
             }
             device.ScreenDesiredOff = false;
-            QueueScreenPower(device);
+            if (IsProcessRunning(device.MirrorProcess))
+                QueueScreenPower(device);
         }
 
         private void QueueScreenPower(DeviceCard device)
@@ -2926,8 +2941,15 @@ namespace OPhoneMirror
                     Process process = device.MirrorProcess;
                     if (!IsProcessRunning(process))
                         return false;
-                    process.Refresh();
-                    IntPtr window = process.MainWindowHandle;
+                    IntPtr window = IntPtr.Zero;
+                    for (int attempt = 0; attempt < 30; attempt++)
+                    {
+                        process.Refresh();
+                        window = process.MainWindowHandle;
+                        if (window != IntPtr.Zero)
+                            break;
+                        System.Threading.Thread.Sleep(100);
+                    }
                     if (window == IntPtr.Zero)
                         return false;
                     IntPtr previousWindow = GetForegroundWindow();
@@ -3122,6 +3144,8 @@ namespace OPhoneMirror
             if (running.Count == 0)
                 return;
 
+            CaptureMirrorWindowPosition(device, running[0]);
+
             if (!pendingRestart.Contains(device))
                 pendingRestart.Add(device);
 
@@ -3132,6 +3156,25 @@ namespace OPhoneMirror
             Diagnostics.Trace(device.Name, "mirror-restart-requested", "keyboard-mode");
             System.Threading.Interlocked.Increment(ref device.TopMostRequestId);
             StopMirrorProcesses(running, false);
+        }
+
+        private void CaptureMirrorWindowPosition(DeviceCard device, Process process)
+        {
+            try
+            {
+                process.Refresh();
+                IntPtr window = process.MainWindowHandle;
+                NativeRect bounds;
+                if (window != IntPtr.Zero && GetWindowRect(window, out bounds) &&
+                    bounds.Right > bounds.Left && bounds.Bottom > bounds.Top)
+                {
+                    device.LastWindowX = bounds.Left;
+                    device.LastWindowY = bounds.Top;
+                    Diagnostics.Trace(device.Name, "window-position-captured",
+                        "x=" + bounds.Left + " y=" + bounds.Top);
+                }
+            }
+            catch { }
         }
 
         private void RestartMirrors(object sender, EventArgs e)
