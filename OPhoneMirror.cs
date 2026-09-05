@@ -12,8 +12,8 @@ using System.Windows.Forms;
 
 [assembly: AssemblyTitle("OPhoneMirror")]
 [assembly: AssemblyProduct("OPhoneMirror")]
-[assembly: AssemblyVersion("1.13.3.0")]
-[assembly: AssemblyFileVersion("1.13.3.0")]
+[assembly: AssemblyVersion("1.13.4.0")]
+[assembly: AssemblyFileVersion("1.13.4.0")]
 
 namespace OPhoneMirror
 {
@@ -1522,6 +1522,7 @@ namespace OPhoneMirror
         private readonly string selectedDeviceSettingsPath;
         private readonly string themeSettingsPath;
         private readonly List<DeviceCard> pendingRestart = new List<DeviceCard>();
+        private readonly HashSet<DeviceCard> pendingWakeBeforeRestart = new HashSet<DeviceCard>();
         private readonly KeyboardCapture keyboardCapture;
         private int keyboardMode;
         private AppThemeMode themeMode;
@@ -1754,7 +1755,7 @@ namespace OPhoneMirror
             Controls.Add(footerStatus);
 
             Label version = new Label();
-            version.Text = "v1.13.3";
+            version.Text = "v1.13.4";
             version.ForeColor = muted;
             version.AutoSize = false;
             version.Location = new Point(512, 488);
@@ -2727,10 +2728,44 @@ namespace OPhoneMirror
             }
             else
             {
-                ApplyScreenSettingToRunning(device1, false);
-                ApplyScreenSettingToRunning(device2, false);
-                footerStatus.Text = "已关闭“仅熄手机屏幕”；手机实体屏幕正在恢复";
+                bool restartNeeded = QueueScreenWakeRestart(device1);
+                restartNeeded = QueueScreenWakeRestart(device2) || restartNeeded;
+                if (restartNeeded)
+                {
+                    restartTimer.Stop();
+                    restartTimer.Start();
+                    footerStatus.Text = "正在释放实体屏幕并恢复投屏…";
+                }
+                else
+                {
+                    footerStatus.Text = "已关闭“仅熄手机屏幕”；手机实体屏幕正在恢复";
+                }
             }
+        }
+
+        private bool QueueScreenWakeRestart(DeviceCard device)
+        {
+            device.ScreenDesiredOff = false;
+            System.Threading.Interlocked.Increment(ref device.ScreenPowerRequestId);
+            List<Process> running = FindMirrorProcesses(device);
+            if (running.Count == 0)
+            {
+                System.Threading.ThreadPool.QueueUserWorkItem(delegate { SendAndroidWake(device); });
+                return false;
+            }
+
+            CaptureMirrorWindowPosition(device, running[0]);
+            if (!pendingRestart.Contains(device))
+                pendingRestart.Add(device);
+            pendingWakeBeforeRestart.Add(device);
+            device.StopRequested = true;
+            device.SessionState = MirrorSessionState.Stopping;
+            device.MirrorStopping = true;
+            device.MirrorStarting = false;
+            Diagnostics.Trace(device.Name, "mirror-restart-requested", "screen-wake");
+            System.Threading.Interlocked.Increment(ref device.TopMostRequestId);
+            StopMirrorProcesses(running, false);
+            return true;
         }
 
         private void ApplyScreenSettingToRunning(DeviceCard device, bool turnOff)
@@ -3241,16 +3276,46 @@ namespace OPhoneMirror
             restartTimer.Stop();
             DeviceCard[] devices = pendingRestart.ToArray();
             pendingRestart.Clear();
+            bool restoringScreen = false;
 
             foreach (DeviceCard device in devices)
             {
+                bool wakeBeforeLaunch = pendingWakeBeforeRestart.Remove(device);
                 StopMirrorProcesses(FindMirrorProcesses(device), true);
-                if (IsUsbDeviceOnline(device.Serial))
-                    LaunchDevice(device);
+                if (!wakeBeforeLaunch)
+                {
+                    if (IsUsbDeviceOnline(device.Serial))
+                        LaunchDevice(device);
+                    continue;
+                }
+
+                restoringScreen = true;
+                System.Threading.ThreadPool.QueueUserWorkItem(delegate
+                {
+                    bool woke = SendAndroidWake(device);
+                    if (IsDisposed)
+                        return;
+                    try
+                    {
+                        BeginInvoke((MethodInvoker)delegate
+                        {
+                            if (IsUsbDeviceOnline(device.Serial))
+                                LaunchDevice(device);
+                            footerStatus.Text = woke
+                                ? device.Name + "：实体屏幕已恢复，可解锁"
+                                : device.Name + "：投屏已重建，请确认实体屏幕已亮起";
+                        });
+                    }
+                    catch { }
+                });
             }
 
             if (devices.Length > 0)
-                footerStatus.Text = "已热切换为“" + KeyboardModeName() + "”";
+            {
+                footerStatus.Text = restoringScreen
+                    ? "正在唤醒实体屏幕并重建投屏…"
+                    : "已热切换为“" + KeyboardModeName() + "”";
+            }
         }
 
         private List<Process> FindMirrorProcesses(DeviceCard device)
