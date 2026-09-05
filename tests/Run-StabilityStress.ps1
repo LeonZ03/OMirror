@@ -13,7 +13,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path $PSScriptRoot -Parent
-$exe = Join-Path $projectRoot "dist\OPhoneMirror\OPhoneMirror.exe"
+$exe = Join-Path $projectRoot "dist\OMirror\OMirror.exe"
 $artifactsRoot = Join-Path $projectRoot ".artifacts\stability"
 
 if ($Replay) {
@@ -68,7 +68,7 @@ if ($InjectAdbFaults) {
 }
 $live.WaitForExit()
 
-$diagnostics = Join-Path $env:LOCALAPPDATA "OPhoneMirror\Diagnostics"
+$diagnostics = Join-Path $env:LOCALAPPDATA "OMirror\Diagnostics"
 if (Test-Path -LiteralPath $diagnostics) {
     Get-ChildItem -LiteralPath $diagnostics -Filter "*.log" | Where-Object { $_.LastWriteTime -ge $startedAt } |
         Sort-Object LastWriteTime -Descending |

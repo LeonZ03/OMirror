@@ -7,7 +7,7 @@ using System.IO;
 using System.Threading;
 using System.Windows.Forms;
 
-namespace OPhoneMirror
+namespace OMirror
 {
     internal sealed class FileEntry
     {

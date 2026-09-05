@@ -6,10 +6,10 @@ param(
 
 $ErrorActionPreference = "Stop"
 $projectRoot = $PSScriptRoot
-$outputDir = Join-Path $projectRoot "dist\OPhoneMirror"
+$outputDir = Join-Path $projectRoot "dist\OMirror"
 $manifest = Join-Path $projectRoot "app.manifest"
-$appIcon = Join-Path $projectRoot "assets\OPhoneMirror.ico"
-$outputExe = Join-Path $outputDir "OPhoneMirror.exe"
+$appIcon = Join-Path $projectRoot "assets\OMirror.ico"
+$outputExe = Join-Path $outputDir "OMirror.exe"
 $deviceConfig = Join-Path $projectRoot "devices.local.txt"
 
 $compilerCandidates = @(
@@ -50,7 +50,7 @@ if (Test-Path -LiteralPath $outputDir) {
 New-Item -ItemType Directory -Path $outputDir | Out-Null
 
 $sources = @(
-    (Join-Path $projectRoot "OPhoneMirror.cs"),
+    (Join-Path $projectRoot "OMirror.cs"),
     (Join-Path $projectRoot "AdbClient.cs"),
     (Join-Path $projectRoot "KeyboardCapture.cs"),
     (Join-Path $projectRoot "TransferForm.cs"),
@@ -64,7 +64,7 @@ $sources = @(
     /reference:System.Windows.Forms.dll /reference:System.Management.dll `
     "/out:$outputExe" $sources
 if ($LASTEXITCODE -ne 0) {
-    throw "OPhoneMirror 编译失败，退出码：$LASTEXITCODE"
+    throw "OMirror 编译失败，退出码：$LASTEXITCODE"
 }
 
 Copy-Item -LiteralPath $ScrcpyDir -Destination (Join-Path $outputDir "scrcpy") -Recurse
@@ -84,7 +84,7 @@ if (Test-Path -LiteralPath $deviceConfig) {
 
 $smokeTest = Start-Process -FilePath $outputExe -ArgumentList "--self-test" -Wait -PassThru
 if ($smokeTest.ExitCode -ne 0) {
-    throw "OPhoneMirror 烟雾测试失败，退出码：$($smokeTest.ExitCode)。请检查 scrcpy 和 devices.local.txt。"
+    throw "OMirror 烟雾测试失败，退出码：$($smokeTest.ExitCode)。请检查 scrcpy 和 devices.local.txt。"
 }
 
 Write-Host "构建完成：$outputExe"

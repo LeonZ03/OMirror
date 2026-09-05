@@ -1,6 +1,6 @@
-# OPhoneMirror
+# OMirror
 
-OPhoneMirror 是一个 Windows 桌面工具，通过 USB ADB 和 scrcpy 投屏并控制 Android 手机，同时提供双向文件管理与针对手机输入法的键盘模式。
+OMirror 是一个 Windows 桌面工具，通过 USB ADB 和 scrcpy 投屏并控制 Android 手机，同时提供双向文件管理与针对手机输入法的键盘模式。
 
 ## 功能
 
@@ -40,10 +40,10 @@ notepad .\devices.local.txt
 .\build.ps1 -ScrcpyDir "C:\path\to\scrcpy-win64-v4.1" -AdbDir "C:\path\to\platform-tools"
 
 # 启动构建产物；运行时不依赖源码目录。
-.\dist\OPhoneMirror\OPhoneMirror.exe
+.\dist\OMirror\OMirror.exe
 
 # 可选：无界面检查设备配置、ADB 和 scrcpy 是否齐全；退出码 0 表示通过。
-$process = Start-Process .\dist\OPhoneMirror\OPhoneMirror.exe -ArgumentList "--self-test" -Wait -PassThru
+$process = Start-Process .\dist\OMirror\OMirror.exe -ArgumentList "--self-test" -Wait -PassThru
 $process.ExitCode
 
 # 对 DeviceIndex 0（第一台设备）执行可重放的 10 分钟实机稳定性测试。
@@ -78,4 +78,4 @@ $process.ExitCode
 
 ## 隐私
 
-真实设备配置保存在 `devices.local.txt`，运行设置保存在 `%LOCALAPPDATA%\OPhoneMirror`。仅在异常退出或压力测试失败时，会在 `%LOCALAPPDATA%\OPhoneMirror\Diagnostics` 留下最近五份脱敏日志。仓库忽略构建产物、设备标识、密钥文件和本机临时数据；提交前仍应检查暂存内容，避免上传凭据或个人文件。
+真实设备配置保存在 `devices.local.txt`，运行设置保存在 `%LOCALAPPDATA%\OMirror`。仅在异常退出或压力测试失败时，会在 `%LOCALAPPDATA%\OMirror\Diagnostics` 留下最近五份脱敏日志。仓库忽略构建产物、设备标识、密钥文件和本机临时数据；提交前仍应检查暂存内容，避免上传凭据或个人文件。

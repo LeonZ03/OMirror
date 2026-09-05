@@ -1,7 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace OPhoneMirror
+namespace OMirror
 {
     internal sealed class KeyboardCapture : IDisposable
     {

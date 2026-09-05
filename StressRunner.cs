@@ -1,7 +1,7 @@
 using System;
 using System.Windows.Forms;
 
-namespace OPhoneMirror
+namespace OMirror
 {
     // This runner deliberately uses the same public event paths as a person using
     // the panel. It is not a mock: screen-power queuing, hot restarts and process

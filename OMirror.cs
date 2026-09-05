@@ -10,12 +10,12 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Forms;
 
-[assembly: AssemblyTitle("OPhoneMirror")]
-[assembly: AssemblyProduct("OPhoneMirror")]
-[assembly: AssemblyVersion("1.13.7.0")]
-[assembly: AssemblyFileVersion("1.13.7.0")]
+[assembly: AssemblyTitle("OMirror")]
+[assembly: AssemblyProduct("OMirror")]
+[assembly: AssemblyVersion("1.14.0.0")]
+[assembly: AssemblyFileVersion("1.14.0.0")]
 
-namespace OPhoneMirror
+namespace OMirror
 {
     internal sealed class DeviceDefinition
     {
@@ -1552,7 +1552,7 @@ namespace OPhoneMirror
             scrcpyPath = Path.Combine(appDirectory, "scrcpy", "scrcpy.exe");
             settingsPath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "OPhoneMirror",
+                "OMirror",
                 "keyboard-mode.txt");
             screenOffSettingsPath = Path.Combine(
                 Path.GetDirectoryName(settingsPath),
@@ -1583,7 +1583,7 @@ namespace OPhoneMirror
                 // The embedded executable icon remains available to the shell.
             }
 
-            Text = "OPhoneMirror · 手机有线投屏";
+            Text = "OMirror";
             StartPosition = FormStartPosition.CenterScreen;
             ClientSize = new Size(620, 520);
             MinimumSize = new Size(636, 559);
@@ -1596,7 +1596,7 @@ namespace OPhoneMirror
             KeyPreview = true;
 
             WordmarkLabel title = new WordmarkLabel();
-            title.Text = "OPhoneMirror";
+            title.Text = "OMirror";
             title.Font = new Font(UiTheme.DisplayFontFamily, 18F, FontStyle.Regular);
             title.ForeColor = foreground;
             title.AutoSize = true;
@@ -1780,7 +1780,7 @@ namespace OPhoneMirror
             Controls.Add(footerStatus);
 
             Label version = new Label();
-            version.Text = "v1.13.7";
+            version.Text = "v1.14.0";
             version.ForeColor = muted;
             version.AutoSize = false;
             version.Location = new Point(512, 488);

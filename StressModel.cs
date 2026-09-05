@@ -1,6 +1,6 @@
 using System;
 
-namespace OPhoneMirror
+namespace OMirror
 {
     internal static class StressModel
     {

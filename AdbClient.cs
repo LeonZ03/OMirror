@@ -4,7 +4,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 
-namespace OPhoneMirror
+namespace OMirror
 {
     internal sealed class AdbResult
     {

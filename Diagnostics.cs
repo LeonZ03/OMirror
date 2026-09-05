@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 
-namespace OPhoneMirror
+namespace OMirror
 {
     internal static class Diagnostics
     {
@@ -44,7 +44,7 @@ namespace OPhoneMirror
             {
                 string root = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "OPhoneMirror",
+                    "OMirror",
                     "Diagnostics");
                 Directory.CreateDirectory(root);
                 Trim(root);
@@ -52,7 +52,7 @@ namespace OPhoneMirror
                 string path = Path.Combine(root,
                     "unexpected-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".log");
                 StringBuilder text = new StringBuilder();
-                text.AppendLine("OPhoneMirror unexpected scrcpy exit");
+                text.AppendLine("OMirror unexpected scrcpy exit");
                 text.AppendLine("device=" + Clean(deviceName));
                 text.AppendLine("exitCode=" + exitCode);
                 lock (Sync)

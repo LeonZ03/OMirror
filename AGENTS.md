@@ -4,15 +4,15 @@ This file is the compact source of truth for AI agents working in this repositor
 
 ## Project identity
 
-- Name: `OPhoneMirror`.
+- Name: `OMirror`.
 - Platform: Windows desktop, WinForms on .NET Framework.
-- Current UI version: `1.13.7`; bundled runtime expected: scrcpy `4.1` with ADB `37.0.1`.
+- Current UI version: `1.14.0`; bundled runtime expected: scrcpy `4.1` with ADB `37.0.1`.
 - There is intentionally no `.csproj`: `build.ps1` invokes the .NET Framework `csc.exe` directly.
 - Repository source is self-contained. `dist/` and `devices.local.txt` are local-only and ignored.
 
 ## Source map
 
-- `OPhoneMirror.cs`: shared Apple-inspired light/dark UI tokens and controls, owned device-picker popover, current-device state, scrcpy launch/stop/restart, keyboard mode persistence, and mode normalization.
+- `OMirror.cs`: shared Apple-inspired light/dark UI tokens and controls, owned device-picker popover, current-device state, scrcpy launch/stop/restart, keyboard mode persistence, and mode normalization.
 - `TransferForm.cs`: themed two-pane PC/Android file browser, collapsible activity drawer, selection, transfer queue, collision confirmation, and large-directory batching.
 - `AdbClient.cs`: quoted ADB execution, UTF-8 shell input, Unicode-safe file transfer, and tar-stream directory receive.
 - `KeyboardCapture.cs`: low-level Windows keyboard hook active only when a tracked scrcpy window owns foreground focus.
@@ -22,7 +22,7 @@ This file is the compact source of truth for AI agents working in this repositor
 - `build.ps1`: canonical build/package entry point.
 - `Diagnostics.cs`: bounded in-memory diagnostics and redacted abnormal-exit bundles under `%LOCALAPPDATA%`.
 - `StressModel.cs`, `StressRunner.cs`, and `tests/Run-StabilityStress.ps1`: deterministic lifecycle model test plus safe Reno6 live stress runner/replay entrypoint.
-- `OPhoneMirror.exe --self-test`: non-interactive package check; exit `0` means both device entries plus ADB/scrcpy were found, while exit `2` means configuration/runtime is incomplete.
+- `OMirror.exe --self-test`: non-interactive package check; exit `0` means both device entries plus ADB/scrcpy were found, while exit `2` means configuration/runtime is incomplete.
 
 ## Configuration contract
 
@@ -34,7 +34,7 @@ display name|model description|adb serial|window x
 
 The executable reads this file beside itself. Missing/invalid entries become disabled “未配置设备” cards. Never restore hard-coded serials, IP addresses, usernames, or absolute user paths in tracked source.
 
-Keyboard, screen-off, always-on-top, theme, and last-selected-device settings live under `%LOCALAPPDATA%\OPhoneMirror`; they are runtime state, not repository content.
+Keyboard, screen-off, always-on-top, theme, and last-selected-device settings live under `%LOCALAPPDATA%\OMirror`; they are runtime state, not repository content.
 
 ## Verified implementation facts
 
@@ -42,17 +42,17 @@ Keyboard, screen-off, always-on-top, theme, and last-selected-device settings li
 - The persisted “仅熄手机屏幕” setting uses scrcpy `Left Alt+O` to turn the physical display off. Disabling the setting must first stop the current scrcpy session (which releases scrcpy's physical-display override), send Android `KEYCODE_WAKEUP` (`224`), and then recreate the mirror at its captured position. Do not treat Android `mScreenState=ON` alone as proof that the physical panel is lit while scrcpy's override is active. Reno6 testing showed that Windows Sogou can consume the Shift in scrcpy's `MOD+Shift+O`, so that shortcut is not reliable for waking. Never use right-click (Android Back when already awake) or the toggling power key (`26`). Never add `--turn-screen-off` to launch arguments or start a second control-only scrcpy instance.
 - The Win32 `INPUT` interop union includes `MOUSEINPUT`, `KEYBDINPUT`, and `HARDWAREINPUT`, so `Marshal.SizeOf(INPUT)` is 40 bytes on x64 and 28 bytes on x86. Do not reduce it to the keyboard member: Windows rejects the undersized `SendInput` call with `ERROR_INVALID_PARAMETER` and screen-power shortcuts silently stop working.
 - After activating scrcpy for a screen-power shortcut, keep it focused for 150 ms after `SendInput`; restoring focus immediately can make SDL discard the queued keys on focus loss.
-- Reno6 repeatedly entered ADB `offline` with the ADB `37.0.0` bundled by scrcpy 4.1, including while no OPhoneMirror/scrcpy process was running. Starting the separately installed Platform Tools ADB `37.0.1-15733141` immediately restored `device`. Release builds must therefore pass `-AdbDir` and bundle `adb.exe`, `AdbWinApi.dll`, and `AdbWinUsbApi.dll` from that tested runtime.
+- Reno6 repeatedly entered ADB `offline` with the ADB `37.0.0` bundled by scrcpy 4.1, including while no OMirror/scrcpy process was running. Starting the separately installed Platform Tools ADB `37.0.1-15733141` immediately restored `device`. Release builds must therefore pass `-AdbDir` and bundle `adb.exe`, `AdbWinApi.dll`, and `AdbWinUsbApi.dll` from that tested runtime.
 - Periodic ADB probes run on the thread pool behind an interlocked single-flight guard so a slow/offline USB transport cannot freeze the WinForms UI.
 - The main window presents one active device. Clicking its selector opens a two-row device list; selection is persisted by index and updates the launch/transfer actions without changing the per-device scrcpy process state.
-- Double-clicking the `OPhoneMirror` wordmark centers the active device's existing mirror window in the working area of the monitor containing the control panel. It preserves the mirror size and configured topmost state, updates the remembered coordinates, and never restarts scrcpy.
+- Double-clicking the `OMirror` wordmark centers the active device's existing mirror window in the working area of the monitor containing the control panel. It preserves the mirror size and configured topmost state, updates the remembered coordinates, and never restarts scrcpy.
 - The selector list is an owned non-activating tool window, anchored below the active-device row. A main-window click closes it without deactivating the control panel; Escape and external app activation also close it.
 - Mirror lifecycle is `Stopped / Starting / Running / Stopping / Recovering`. Each process has a generation id, so stale exit callbacks cannot alter a new session. Exit code `2` (disconnect) and unexpected nonzero exits may retry twice after 750ms and 2s; manual stop and keyboard hot-restart never consume the retry budget.
 - scrcpy stdout/stderr are read asynchronously. Normal runs retain a bounded memory tail; unexpected exit writes a redacted log. Keep only five diagnostics bundles, and never add diagnostics/artifacts to Git.
 - Theme mode persists as `0=auto`, `1=light`, or `2=dark`. Auto reads Windows `AppsUseLightTheme`; `SystemEvents.UserPreferenceChanged` hot-applies semantic colors to the main form, picker, open transfer forms, grids, and DWM title bars.
 - The main action is stateful: idle `投屏`, starting `连接中`, running `停止`, and stopping `停止中`. Existing matching scrcpy processes are adopted instead of duplicated, and process exit updates the UI asynchronously.
 - UI text uses `Microsoft YaHei UI` for crisp Chinese GDI rendering and the installed `Segoe UI Variable Display Semibold` face only for the Latin product wordmark. Standard actions are vector-drawn icons with tooltips and accessible names; no emoji or bitmap icon font is required.
-- The application icon is the transparent pixel portrait in `assets/OPhoneMirror-icon-source.png`; `assets/OPhoneMirror.ico` contains native 16, 20, 24, 32, 40, 48, 64, 128, and 256 px frames. `build.ps1` embeds it as the executable icon, and `MainForm` explicitly loads the associated executable icon for consistent title-bar and taskbar rendering.
+- The application icon is the transparent pixel portrait in `assets/OMirror-icon-source.png`; `assets/OMirror.ico` contains native 16, 20, 24, 32, 40, 48, 64, 128, and 256 px frames. `build.ps1` embeds it as the executable icon, and `MainForm` explicitly loads the associated executable icon for consistent title-bar and taskbar rendering.
 - `ModernButton` is a fully owner-drawn `Control`, not a native `Button`, and intentionally has no rounded Win32 `Region`. The single anti-aliased paint boundary avoids DPI-scaled corner fringes while the custom accessibility object preserves push-button semantics and keyboard activation.
 - `app.manifest` declares `PerMonitorV2,PerMonitor` plus the legacy `true/pm` fallback. Keep the existing `AutoScaleMode.Dpi` forms so Windows renders text and vectors at the monitor's native scale instead of bitmap-stretching the whole window.
 - Input modes are deliberately different:
@@ -86,9 +86,9 @@ Canonical build:
 Expected output:
 
 ```text
-dist\OPhoneMirror\OPhoneMirror.exe
-dist\OPhoneMirror\scrcpy\...
-dist\OPhoneMirror\devices.local.txt  # only when local config exists
+dist\OMirror\OMirror.exe
+dist\OMirror\scrcpy\...
+dist\OMirror\devices.local.txt  # only when local config exists
 ```
 
 Before committing:
@@ -98,7 +98,7 @@ Before committing:
 3. Search tracked files for real serials, private IPs, home-directory usernames, tokens, passwords, private keys, and generated binaries.
 4. For transfer changes, validate both directions with a Unicode filename; for directory changes, include a nested Unicode folder and compare hashes.
 5. For Camera/listing changes, verify a large directory displays only the first batch and “更多” remains enabled.
-6. For lifecycle/input changes, run `OPhoneMirror.exe --stress-model <seed>` and, with only the target handset connected, `tests\Run-StabilityStress.ps1 -DeviceIndex 0 -DurationMinutes 10 -Seed <seed>`.
+6. For lifecycle/input changes, run `OMirror.exe --stress-model <seed>` and, with only the target handset connected, `tests\Run-StabilityStress.ps1 -DeviceIndex 0 -DurationMinutes 10 -Seed <seed>`.
 
 ## Change constraints
 
