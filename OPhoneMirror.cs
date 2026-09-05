@@ -12,8 +12,8 @@ using System.Windows.Forms;
 
 [assembly: AssemblyTitle("OPhoneMirror")]
 [assembly: AssemblyProduct("OPhoneMirror")]
-[assembly: AssemblyVersion("1.13.5.0")]
-[assembly: AssemblyFileVersion("1.13.5.0")]
+[assembly: AssemblyVersion("1.13.6.0")]
+[assembly: AssemblyFileVersion("1.13.6.0")]
 
 namespace OPhoneMirror
 {
@@ -1423,6 +1423,21 @@ namespace OPhoneMirror
         }
     }
 
+    internal sealed class WordmarkLabel : Label
+    {
+        private const int WmLButtonDoubleClick = 0x0203;
+
+        public event EventHandler WordmarkDoubleClick;
+
+        protected override void WndProc(ref Message message)
+        {
+            bool doubleClicked = message.Msg == WmLButtonDoubleClick;
+            base.WndProc(ref message);
+            if (doubleClicked && WordmarkDoubleClick != null)
+                WordmarkDoubleClick(this, EventArgs.Empty);
+        }
+    }
+
     internal sealed class DevicePickerForm : Form
     {
         public DevicePickerForm()
@@ -1571,12 +1586,13 @@ namespace OPhoneMirror
             MaximizeBox = false;
             KeyPreview = true;
 
-            Label title = new Label();
+            WordmarkLabel title = new WordmarkLabel();
             title.Text = "OPhoneMirror";
             title.Font = new Font(UiTheme.DisplayFontFamily, 18F, FontStyle.Regular);
             title.ForeColor = foreground;
             title.AutoSize = true;
             title.Location = new Point(28, 18);
+            title.WordmarkDoubleClick += delegate { CenterActiveMirrorWindow(); };
             Controls.Add(title);
 
             ModernButton refresh = MakeIconButton(UiIcon.Refresh, "刷新设备", UiButtonKind.Secondary);
@@ -1755,7 +1771,7 @@ namespace OPhoneMirror
             Controls.Add(footerStatus);
 
             Label version = new Label();
-            version.Text = "v1.13.5";
+            version.Text = "v1.13.6";
             version.ForeColor = muted;
             version.AutoSize = false;
             version.Location = new Point(512, 488);
@@ -2900,6 +2916,45 @@ namespace OPhoneMirror
                 0,
                 0,
                 SwpNoMove | SwpNoSize | SwpNoActivate);
+        }
+
+        private void CenterActiveMirrorWindow()
+        {
+            DeviceCard device = activeDevice;
+            List<Process> running = FindMirrorProcesses(device);
+            if (running.Count == 0)
+                return;
+
+            try
+            {
+                Process process = running[0];
+                process.Refresh();
+                IntPtr window = process.MainWindowHandle;
+                NativeRect bounds;
+                if (window == IntPtr.Zero || !GetWindowRect(window, out bounds))
+                    return;
+
+                int width = bounds.Right - bounds.Left;
+                int height = bounds.Bottom - bounds.Top;
+                if (width <= 0 || height <= 0)
+                    return;
+
+                Rectangle workingArea = Screen.FromHandle(Handle).WorkingArea;
+                int x = workingArea.Left + Math.Max(0, (workingArea.Width - width) / 2);
+                int y = workingArea.Top + Math.Max(0, (workingArea.Height - height) / 2);
+                IntPtr insertAfter = alwaysOnTopToggle.Checked ? HwndTopMost : HwndNoTopMost;
+                if (!SetWindowPos(window, insertAfter, x, y, 0, 0,
+                    SwpNoSize | SwpNoActivate))
+                    return;
+
+                device.LastWindowX = x;
+                device.LastWindowY = y;
+                Diagnostics.Trace(device.Name, "window-centered", "x=" + x + " y=" + y);
+            }
+            catch
+            {
+                // The mirror may exit between the double-click and the move.
+            }
         }
 
         private void StartScreenControl(DeviceCard device)
