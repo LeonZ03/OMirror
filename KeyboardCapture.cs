@@ -11,12 +11,12 @@ namespace OPhoneMirror
         private const int WmKeyUp = 0x0101;
         private const int WmSysKeyDown = 0x0104;
         private const int WmSysKeyUp = 0x0105;
+        private const int WmInputLangChangeRequest = 0x0050;
+        private const int WmImeControl = 0x0283;
+        private const int ImcSetOpenStatus = 0x0006;
         private const int VkTab = 0x09;
         private const int VkEscape = 0x1B;
         private const int VkControl = 0x11;
-        private const int VkShift = 0x10;
-        private const int VkLShift = 0xA0;
-        private const int VkRShift = 0xA1;
         private const int VkCapital = 0x14;
         private const int VkSnapshot = 0x2C;
         private const int VkF4 = 0x73;
@@ -30,24 +30,27 @@ namespace OPhoneMirror
         private const int VkMediaStop = 0xB2;
         private const int VkMediaPlayPause = 0xB3;
         private const int LlkhfAltDown = 0x20;
+        private const uint KlfNotTellShell = 0x00000080;
+        private const uint SmtoAbortIfHung = 0x0002;
 
         private readonly MainForm owner;
         private readonly HookProc hookProc;
         private readonly HashSet<int> suppressedHeldKeys = new HashSet<int>();
         private IntPtr hookHandle;
+        private IntPtr englishLayout;
         private IntPtr ownedWindow;
         private DeviceCard ownedDevice;
+        private DateTime nextLayoutRefreshUtc;
         private bool tabSuppressed;
         private bool winHeld;
         private bool ctrlEscapeSuppressed;
         private bool altF4Suppressed;
-        private bool leftShiftSuppressed;
-        private bool rightShiftSuppressed;
 
         public KeyboardCapture(MainForm owner)
         {
             this.owner = owner;
             hookProc = HookCallback;
+            englishLayout = LoadKeyboardLayout("00000409", KlfNotTellShell);
             hookHandle = SetWindowsHookEx(WhKeyboardLl, hookProc, GetModuleHandle(null), 0);
         }
 
@@ -67,8 +70,26 @@ namespace OPhoneMirror
             bool changed = foreground != ownedWindow || device != ownedDevice;
             ownedWindow = foreground;
             ownedDevice = device;
-            if (changed)
-                Diagnostics.Trace(device.Name, "keyboard-owner-enter", "native-input-context");
+            if (changed || DateTime.UtcNow >= nextLayoutRefreshUtc)
+            {
+                PreparePhoneWindow(foreground, device, changed);
+                nextLayoutRefreshUtc = DateTime.UtcNow.AddMilliseconds(500);
+            }
+        }
+
+        private void PreparePhoneWindow(IntPtr window, DeviceCard device, bool entering)
+        {
+            bool layoutRequested = englishLayout != IntPtr.Zero &&
+                SendMessageTimeout(window, WmInputLangChangeRequest, IntPtr.Zero,
+                    englishLayout, SmtoAbortIfHung, 100, IntPtr.Zero) != IntPtr.Zero;
+            IntPtr imeWindow = ImmGetDefaultIMEWnd(window);
+            bool imeClosed = imeWindow == IntPtr.Zero ||
+                SendMessageTimeout(imeWindow, WmImeControl, new IntPtr(ImcSetOpenStatus),
+                    IntPtr.Zero, SmtoAbortIfHung, 100, IntPtr.Zero) != IntPtr.Zero;
+
+            if (entering)
+                Diagnostics.Trace(device.Name, "keyboard-owner-enter",
+                    "layout=" + layoutRequested + " ime=" + imeClosed);
         }
 
         private void LeavePhoneOwnership()
@@ -95,32 +116,6 @@ namespace OPhoneMirror
                 {
                     bool altDown = (flags & LlkhfAltDown) != 0 ||
                         (GetAsyncKeyState(0x12) & 0x8000) != 0;
-
-                    // In SDK/raw-key mode, consume the single Shift before the
-                    // Windows IME sees it and inject the same key on Android.
-                    // UHID mode already handles Shift correctly without help.
-                    if (owner.UsesShortPhraseKeyboard &&
-                        (virtualKey == VkShift || virtualKey == VkLShift || virtualKey == VkRShift))
-                    {
-                        bool right = virtualKey == VkRShift;
-                        bool held = right ? rightShiftSuppressed : leftShiftSuppressed;
-                        if (keyDown && !held)
-                        {
-                            if (right)
-                                rightShiftSuppressed = true;
-                            else
-                                leftShiftSuppressed = true;
-                            owner.SendAndroidKeyAsync(device, right ? 60 : 59);
-                        }
-                        else if (keyUp)
-                        {
-                            if (right)
-                                rightShiftSuppressed = false;
-                            else
-                                leftShiftSuppressed = false;
-                        }
-                        return new IntPtr(1);
-                    }
 
                     if (virtualKey == VkTab && (altDown || tabSuppressed))
                     {
@@ -211,8 +206,6 @@ namespace OPhoneMirror
             winHeld = false;
             ctrlEscapeSuppressed = false;
             altF4Suppressed = false;
-            leftShiftSuppressed = false;
-            rightShiftSuppressed = false;
             suppressedHeldKeys.Clear();
         }
 
@@ -223,6 +216,11 @@ namespace OPhoneMirror
             {
                 UnhookWindowsHookEx(hookHandle);
                 hookHandle = IntPtr.Zero;
+            }
+            if (englishLayout != IntPtr.Zero)
+            {
+                UnloadKeyboardLayout(englishLayout);
+                englishLayout = IntPtr.Zero;
             }
         }
 
@@ -238,6 +236,15 @@ namespace OPhoneMirror
         private static extern short GetAsyncKeyState(int virtualKey);
         [DllImport("user32.dll")]
         private static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern IntPtr LoadKeyboardLayout(string layoutId, uint flags);
+        [DllImport("user32.dll")]
+        private static extern bool UnloadKeyboardLayout(IntPtr layout);
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern IntPtr SendMessageTimeout(IntPtr window, int message, IntPtr wParam,
+            IntPtr lParam, uint flags, uint timeout, IntPtr result);
+        [DllImport("imm32.dll")]
+        private static extern IntPtr ImmGetDefaultIMEWnd(IntPtr window);
         [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
         private static extern IntPtr GetModuleHandle(string moduleName);
     }
