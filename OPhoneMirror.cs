@@ -12,8 +12,8 @@ using System.Windows.Forms;
 
 [assembly: AssemblyTitle("OPhoneMirror")]
 [assembly: AssemblyProduct("OPhoneMirror")]
-[assembly: AssemblyVersion("1.13.4.0")]
-[assembly: AssemblyFileVersion("1.13.4.0")]
+[assembly: AssemblyVersion("1.13.5.0")]
+[assembly: AssemblyFileVersion("1.13.5.0")]
 
 namespace OPhoneMirror
 {
@@ -66,7 +66,7 @@ namespace OPhoneMirror
     internal static class UiTheme
     {
         public const string FontFamily = "Microsoft YaHei UI";
-        public const string DisplayFontFamily = "Segoe UI";
+        public const string DisplayFontFamily = "Segoe UI Variable Display Semib";
         private static ThemePalette current = CreateLight();
 
         public static event Action<ThemePalette> ThemeChanged;
@@ -1573,7 +1573,7 @@ namespace OPhoneMirror
 
             Label title = new Label();
             title.Text = "OPhoneMirror";
-            title.Font = new Font(UiTheme.DisplayFontFamily, 21F, FontStyle.Bold);
+            title.Font = new Font(UiTheme.DisplayFontFamily, 18F, FontStyle.Regular);
             title.ForeColor = foreground;
             title.AutoSize = true;
             title.Location = new Point(28, 18);
@@ -1755,7 +1755,7 @@ namespace OPhoneMirror
             Controls.Add(footerStatus);
 
             Label version = new Label();
-            version.Text = "v1.13.4";
+            version.Text = "v1.13.5";
             version.ForeColor = muted;
             version.AutoSize = false;
             version.Location = new Point(512, 488);
