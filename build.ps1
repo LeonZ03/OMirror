@@ -8,6 +8,7 @@ $ErrorActionPreference = "Stop"
 $projectRoot = $PSScriptRoot
 $outputDir = Join-Path $projectRoot "dist\OPhoneMirror"
 $manifest = Join-Path $projectRoot "app.manifest"
+$appIcon = Join-Path $projectRoot "assets\OPhoneMirror.ico"
 $outputExe = Join-Path $outputDir "OPhoneMirror.exe"
 $deviceConfig = Join-Path $projectRoot "devices.local.txt"
 
@@ -18,6 +19,10 @@ $compilerCandidates = @(
 $compiler = $compilerCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
 if (-not $compiler) {
     throw "未找到 .NET Framework C# 编译器 csc.exe。"
+}
+
+if (-not (Test-Path -LiteralPath $appIcon)) {
+    throw "未找到应用图标：$appIcon"
 }
 
 if (-not $ScrcpyDir) {
@@ -54,7 +59,7 @@ $sources = @(
     (Join-Path $projectRoot "StressRunner.cs")
 )
 
-& $compiler /nologo /target:winexe /optimize+ "/win32manifest:$manifest" `
+& $compiler /nologo /target:winexe /optimize+ "/win32manifest:$manifest" "/win32icon:$appIcon" `
     /reference:System.dll /reference:System.Drawing.dll `
     /reference:System.Windows.Forms.dll /reference:System.Management.dll `
     "/out:$outputExe" $sources

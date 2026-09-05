@@ -12,8 +12,8 @@ using System.Windows.Forms;
 
 [assembly: AssemblyTitle("OPhoneMirror")]
 [assembly: AssemblyProduct("OPhoneMirror")]
-[assembly: AssemblyVersion("1.13.6.0")]
-[assembly: AssemblyFileVersion("1.13.6.0")]
+[assembly: AssemblyVersion("1.13.7.0")]
+[assembly: AssemblyFileVersion("1.13.7.0")]
 
 namespace OPhoneMirror
 {
@@ -1574,6 +1574,15 @@ namespace OPhoneMirror
             toolTip.InitialDelay = 450;
             toolTip.ReshowDelay = 100;
 
+            try
+            {
+                Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+            }
+            catch
+            {
+                // The embedded executable icon remains available to the shell.
+            }
+
             Text = "OPhoneMirror · 手机有线投屏";
             StartPosition = FormStartPosition.CenterScreen;
             ClientSize = new Size(620, 520);
@@ -1771,7 +1780,7 @@ namespace OPhoneMirror
             Controls.Add(footerStatus);
 
             Label version = new Label();
-            version.Text = "v1.13.6";
+            version.Text = "v1.13.7";
             version.ForeColor = muted;
             version.AutoSize = false;
             version.Location = new Point(512, 488);
