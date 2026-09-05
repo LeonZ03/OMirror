@@ -6,7 +6,7 @@ This file is the compact source of truth for AI agents working in this repositor
 
 - Name: `OPhoneMirror`.
 - Platform: Windows desktop, WinForms on .NET Framework.
-- Current UI version: `1.13.1`; bundled runtime expected: scrcpy `4.1` with ADB `37.0.1`.
+- Current UI version: `1.13.0`; bundled runtime expected: scrcpy `4.1` with ADB `37.0.1`.
 - There is intentionally no `.csproj`: `build.ps1` invokes the .NET Framework `csc.exe` directly.
 - Repository source is self-contained. `dist/` and `devices.local.txt` are local-only and ignored.
 
@@ -15,7 +15,7 @@ This file is the compact source of truth for AI agents working in this repositor
 - `OPhoneMirror.cs`: shared Apple-inspired light/dark UI tokens and controls, owned device-picker popover, current-device state, scrcpy launch/stop/restart, keyboard mode persistence, and mode normalization.
 - `TransferForm.cs`: themed two-pane PC/Android file browser, collapsible activity drawer, selection, transfer queue, collision confirmation, and large-directory batching.
 - `AdbClient.cs`: quoted ADB execution, UTF-8 shell input, Unicode-safe file transfer, and tar-stream directory receive.
-- `KeyboardCapture.cs`: focus-driven keyboard ownership, temporary English input context for scrcpy, and foreground-only interception of Windows-reserved keys.
+- `KeyboardCapture.cs`: low-level Windows keyboard hook active only when a tracked scrcpy window owns foreground focus.
 - `app.manifest`: `asInvoker`; do not elevate, because Windows blocks Explorer drag/drop into elevated windows.
 - `devices.example.txt`: public configuration template.
 - `devices.local.txt`: real serials and labels; never commit.
@@ -61,11 +61,7 @@ Keyboard, screen-off, always-on-top, theme, and last-selected-device settings li
 - Foreground-only keyboard mapping:
   - `Alt+Tab` → Android `APP_SWITCH` (`187`).
   - `Win` and `Ctrl+Esc` → Android `HOME` (`3`).
-  - `Alt+F4` → Android `BACK` (`4`) without closing scrcpy.
-  - Caps Lock, Print Screen, volume, and media keys are consumed by Windows and mapped to their Android keycodes.
-  - Ordinary Shift/Ctrl/Alt and text keys are never converted to ADB taps; they remain in scrcpy's native SDK/UHID path with genuine down/up state.
-  - A 75 ms focus tracker temporarily requests US English and closes the Windows IME only for the foreground scrcpy window. It does not persist a Windows language change.
-  - All hooks and held suppression state are released on focus loss or form close; no keys are logged. `Ctrl+Alt+Delete` remains Windows-owned by design.
+  - All hooks are released when the main form closes; no keys are logged.
 - Android shared storage defaults to `/sdcard/Download`; quick links include `/sdcard/Download` and `/sdcard/DCIM`.
 - The transfer activity panel defaults collapsed, expands automatically when a transfer starts, and remains manually collapsible while retaining task history.
 - Remote listing uses one Toybox command: `find ... -printf '%M|%s|%T@|%p\n'`. Do not regress to per-entry `-exec stat`.

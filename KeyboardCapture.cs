@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
 namespace OPhoneMirror
@@ -11,94 +10,35 @@ namespace OPhoneMirror
         private const int WmKeyUp = 0x0101;
         private const int WmSysKeyDown = 0x0104;
         private const int WmSysKeyUp = 0x0105;
-        private const int WmInputLangChangeRequest = 0x0050;
-        private const int WmImeControl = 0x0283;
-        private const int ImcSetOpenStatus = 0x0006;
         private const int VkTab = 0x09;
         private const int VkEscape = 0x1B;
         private const int VkControl = 0x11;
-        private const int VkCapital = 0x14;
-        private const int VkSnapshot = 0x2C;
-        private const int VkF4 = 0x73;
+        private const int VkShift = 0x10;
+        private const int VkLShift = 0xA0;
+        private const int VkRShift = 0xA1;
         private const int VkLWin = 0x5B;
         private const int VkRWin = 0x5C;
-        private const int VkVolumeMute = 0xAD;
-        private const int VkVolumeDown = 0xAE;
-        private const int VkVolumeUp = 0xAF;
-        private const int VkMediaNext = 0xB0;
-        private const int VkMediaPrevious = 0xB1;
-        private const int VkMediaStop = 0xB2;
-        private const int VkMediaPlayPause = 0xB3;
         private const int LlkhfAltDown = 0x20;
-        private const uint KlfNotTellShell = 0x00000080;
-        private const uint SmtoAbortIfHung = 0x0002;
 
         private readonly MainForm owner;
         private readonly HookProc hookProc;
-        private readonly HashSet<int> suppressedHeldKeys = new HashSet<int>();
         private IntPtr hookHandle;
-        private IntPtr englishLayout;
-        private IntPtr ownedWindow;
-        private DeviceCard ownedDevice;
-        private DateTime nextLayoutRefreshUtc;
         private bool tabSuppressed;
         private bool winHeld;
         private bool ctrlEscapeSuppressed;
-        private bool altF4Suppressed;
+        private bool leftShiftHeld;
+        private bool rightShiftHeld;
 
         public KeyboardCapture(MainForm owner)
         {
             this.owner = owner;
             hookProc = HookCallback;
-            englishLayout = LoadKeyboardLayout("00000409", KlfNotTellShell);
             hookHandle = SetWindowsHookEx(WhKeyboardLl, hookProc, GetModuleHandle(null), 0);
         }
 
-        public bool IsInstalled { get { return hookHandle != IntPtr.Zero; } }
-        public bool IsPhoneOwned { get { return ownedDevice != null; } }
-
-        public void RefreshOwnership()
+        public bool IsInstalled
         {
-            IntPtr foreground = GetForegroundWindow();
-            DeviceCard device = owner.GetMirrorDeviceForWindow(foreground);
-            if (device == null)
-            {
-                LeavePhoneOwnership();
-                return;
-            }
-
-            bool changed = foreground != ownedWindow || device != ownedDevice;
-            ownedWindow = foreground;
-            ownedDevice = device;
-            if (changed || DateTime.UtcNow >= nextLayoutRefreshUtc)
-            {
-                PreparePhoneWindow(foreground, device, changed);
-                nextLayoutRefreshUtc = DateTime.UtcNow.AddMilliseconds(500);
-            }
-        }
-
-        private void PreparePhoneWindow(IntPtr window, DeviceCard device, bool entering)
-        {
-            bool layoutRequested = englishLayout != IntPtr.Zero &&
-                SendMessageTimeout(window, WmInputLangChangeRequest, IntPtr.Zero,
-                    englishLayout, SmtoAbortIfHung, 100, IntPtr.Zero) != IntPtr.Zero;
-            IntPtr imeWindow = ImmGetDefaultIMEWnd(window);
-            bool imeClosed = imeWindow == IntPtr.Zero ||
-                SendMessageTimeout(imeWindow, WmImeControl, new IntPtr(ImcSetOpenStatus),
-                    IntPtr.Zero, SmtoAbortIfHung, 100, IntPtr.Zero) != IntPtr.Zero;
-
-            if (entering)
-                Diagnostics.Trace(device.Name, "keyboard-owner-enter",
-                    "layout=" + layoutRequested + " ime=" + imeClosed);
-        }
-
-        private void LeavePhoneOwnership()
-        {
-            if (ownedDevice != null)
-                Diagnostics.Trace(ownedDevice.Name, "keyboard-owner-leave", "focus-changed");
-            ownedWindow = IntPtr.Zero;
-            ownedDevice = null;
-            ResetSuppressedState();
+            get { return hookHandle != IntPtr.Zero; }
         }
 
         private IntPtr HookCallback(int code, IntPtr wParam, IntPtr lParam)
@@ -114,18 +54,45 @@ namespace OPhoneMirror
 
                 if (device != null)
                 {
-                    bool altDown = (flags & LlkhfAltDown) != 0 ||
-                        (GetAsyncKeyState(0x12) & 0x8000) != 0;
+                    bool altDown = (flags & LlkhfAltDown) != 0;
+
+                    // Windows handles a bare Shift as an input-language shortcut.
+                    // While scrcpy owns focus, consume it before Windows sees it and
+                    // send the corresponding Android Shift event instead. The phone
+                    // input method therefore remains the only recipient.
+                    if (virtualKey == VkShift || virtualKey == VkLShift || virtualKey == VkRShift)
+                    {
+                        bool rightShift = virtualKey == VkRShift;
+                        bool alreadyHeld = rightShift ? rightShiftHeld : leftShiftHeld;
+                        if (keyDown && !alreadyHeld)
+                        {
+                            if (rightShift)
+                                rightShiftHeld = true;
+                            else
+                                leftShiftHeld = true;
+                            owner.SendAndroidKeyAsync(device, rightShift ? 60 : 59);
+                        }
+                        else if (keyUp)
+                        {
+                            if (rightShift)
+                                rightShiftHeld = false;
+                            else
+                                leftShiftHeld = false;
+                        }
+                        return new IntPtr(1);
+                    }
 
                     if (virtualKey == VkTab && (altDown || tabSuppressed))
                     {
                         if (keyDown && !tabSuppressed)
                         {
                             tabSuppressed = true;
-                            owner.SendAndroidKeyAsync(device, 187);
+                            owner.SendAndroidKeyAsync(device, 187); // APP_SWITCH
                         }
                         else if (keyUp)
+                        {
                             tabSuppressed = false;
+                        }
                         return new IntPtr(1);
                     }
 
@@ -134,10 +101,12 @@ namespace OPhoneMirror
                         if (keyDown && !winHeld)
                         {
                             winHeld = true;
-                            owner.SendAndroidKeyAsync(device, 3);
+                            owner.SendAndroidKeyAsync(device, 3); // HOME
                         }
                         else if (keyUp)
+                        {
                             winHeld = false;
+                        }
                         return new IntPtr(1);
                     }
 
@@ -147,104 +116,59 @@ namespace OPhoneMirror
                         if (keyDown && !ctrlEscapeSuppressed)
                         {
                             ctrlEscapeSuppressed = true;
-                            owner.SendAndroidKeyAsync(device, 3);
+                            owner.SendAndroidKeyAsync(device, 3); // HOME
                         }
                         else if (keyUp)
-                            ctrlEscapeSuppressed = false;
-                        return new IntPtr(1);
-                    }
-
-                    if (virtualKey == VkF4 && (altDown || altF4Suppressed))
-                    {
-                        if (keyDown && !altF4Suppressed)
                         {
-                            altF4Suppressed = true;
-                            owner.SendAndroidKeyAsync(device, 4);
+                            ctrlEscapeSuppressed = false;
                         }
-                        else if (keyUp)
-                            altF4Suppressed = false;
-                        return new IntPtr(1);
-                    }
-
-                    int androidKey;
-                    if (TryMapExclusiveSystemKey(virtualKey, out androidKey))
-                    {
-                        if (keyDown && suppressedHeldKeys.Add(virtualKey))
-                            owner.SendAndroidKeyAsync(device, androidKey);
-                        else if (keyUp)
-                            suppressedHeldKeys.Remove(virtualKey);
                         return new IntPtr(1);
                     }
                 }
                 else
-                    ResetSuppressedState();
+                {
+                    tabSuppressed = false;
+                    winHeld = false;
+                    ctrlEscapeSuppressed = false;
+                    leftShiftHeld = false;
+                    rightShiftHeld = false;
+                }
             }
 
             return CallNextHookEx(hookHandle, code, wParam, lParam);
         }
 
-        private static bool TryMapExclusiveSystemKey(int virtualKey, out int androidKey)
-        {
-            switch (virtualKey)
-            {
-                case VkCapital: androidKey = 115; return true;
-                case VkSnapshot: androidKey = 120; return true;
-                case VkVolumeMute: androidKey = 164; return true;
-                case VkVolumeDown: androidKey = 25; return true;
-                case VkVolumeUp: androidKey = 24; return true;
-                case VkMediaNext: androidKey = 87; return true;
-                case VkMediaPrevious: androidKey = 88; return true;
-                case VkMediaStop: androidKey = 86; return true;
-                case VkMediaPlayPause: androidKey = 85; return true;
-                default: androidKey = 0; return false;
-            }
-        }
-
-        private void ResetSuppressedState()
-        {
-            tabSuppressed = false;
-            winHeld = false;
-            ctrlEscapeSuppressed = false;
-            altF4Suppressed = false;
-            suppressedHeldKeys.Clear();
-        }
-
         public void Dispose()
         {
-            LeavePhoneOwnership();
             if (hookHandle != IntPtr.Zero)
             {
                 UnhookWindowsHookEx(hookHandle);
                 hookHandle = IntPtr.Zero;
-            }
-            if (englishLayout != IntPtr.Zero)
-            {
-                UnloadKeyboardLayout(englishLayout);
-                englishLayout = IntPtr.Zero;
             }
         }
 
         private delegate IntPtr HookProc(int code, IntPtr wParam, IntPtr lParam);
 
         [DllImport("user32.dll", SetLastError = true)]
-        private static extern IntPtr SetWindowsHookEx(int idHook, HookProc callback, IntPtr module, uint threadId);
+        private static extern IntPtr SetWindowsHookEx(
+            int idHook,
+            HookProc callback,
+            IntPtr module,
+            uint threadId);
+
         [DllImport("user32.dll", SetLastError = true)]
         private static extern bool UnhookWindowsHookEx(IntPtr hook);
+
         [DllImport("user32.dll")]
-        private static extern IntPtr CallNextHookEx(IntPtr hook, int code, IntPtr wParam, IntPtr lParam);
+        private static extern IntPtr CallNextHookEx(
+            IntPtr hook,
+            int code,
+            IntPtr wParam,
+            IntPtr lParam);
+
         [DllImport("user32.dll")]
         private static extern short GetAsyncKeyState(int virtualKey);
-        [DllImport("user32.dll")]
-        private static extern IntPtr GetForegroundWindow();
-        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-        private static extern IntPtr LoadKeyboardLayout(string layoutId, uint flags);
-        [DllImport("user32.dll")]
-        private static extern bool UnloadKeyboardLayout(IntPtr layout);
-        [DllImport("user32.dll", SetLastError = true)]
-        private static extern IntPtr SendMessageTimeout(IntPtr window, int message, IntPtr wParam,
-            IntPtr lParam, uint flags, uint timeout, IntPtr result);
-        [DllImport("imm32.dll")]
-        private static extern IntPtr ImmGetDefaultIMEWnd(IntPtr window);
+
         [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
         private static extern IntPtr GetModuleHandle(string moduleName);
     }
