@@ -12,8 +12,8 @@ using System.Windows.Forms;
 
 [assembly: AssemblyTitle("OPhoneMirror")]
 [assembly: AssemblyProduct("OPhoneMirror")]
-[assembly: AssemblyVersion("1.13.0.0")]
-[assembly: AssemblyFileVersion("1.13.0.0")]
+[assembly: AssemblyVersion("1.13.1.0")]
+[assembly: AssemblyFileVersion("1.13.1.0")]
 
 namespace OPhoneMirror
 {
@@ -1502,6 +1502,7 @@ namespace OPhoneMirror
         private DeviceCard activeDevice;
         private readonly Timer refreshTimer;
         private readonly Timer restartTimer;
+        private readonly Timer keyboardOwnershipTimer;
         private readonly Label footerStatus;
         private readonly ModeSelector keyboardModeSelector;
         private readonly ModeSelector themeModeSelector;
@@ -1754,7 +1755,7 @@ namespace OPhoneMirror
             Controls.Add(footerStatus);
 
             Label version = new Label();
-            version.Text = "v1.13.0";
+            version.Text = "v1.13.1";
             version.ForeColor = muted;
             version.AutoSize = false;
             version.Location = new Point(512, 488);
@@ -1772,8 +1773,13 @@ namespace OPhoneMirror
             restartTimer.Tick += RestartMirrors;
 
             keyboardCapture = new KeyboardCapture(this);
+            keyboardOwnershipTimer = new Timer();
+            keyboardOwnershipTimer.Interval = 75;
+            keyboardOwnershipTimer.Tick += delegate { keyboardCapture.RefreshOwnership(); };
             FormClosed += delegate
             {
+                keyboardOwnershipTimer.Stop();
+                keyboardOwnershipTimer.Dispose();
                 StopScreenControl(device1, true);
                 StopScreenControl(device2, true);
                 UiTheme.ThemeChanged -= ApplyTheme;
@@ -1790,6 +1796,7 @@ namespace OPhoneMirror
                 RefreshDevices();
                 AdoptExistingMirrorsAsync();
                 refreshTimer.Start();
+                keyboardOwnershipTimer.Start();
             };
             KeyDown += delegate(object sender, KeyEventArgs e)
             {
@@ -1960,6 +1967,26 @@ namespace OPhoneMirror
             {
                 new AdbClient(adbPath, target.Serial).Shell("input keyevent " + keyCode, 5000);
             });
+        }
+
+        internal void StressToggleKeyboardOwnership()
+        {
+            if (keyboardCapture.IsPhoneOwned)
+            {
+                Activate();
+                SetForegroundWindow(Handle);
+            }
+            else
+            {
+                Process process = activeDevice.MirrorProcess;
+                if (IsProcessRunning(process))
+                {
+                    process.Refresh();
+                    if (process.MainWindowHandle != IntPtr.Zero)
+                        SetForegroundWindow(process.MainWindowHandle);
+                }
+            }
+            keyboardCapture.RefreshOwnership();
         }
 
         internal void StressRestore(bool screenOff, bool topMost, int keyboard, int deviceIndex)
@@ -3090,11 +3117,16 @@ namespace OPhoneMirror
         internal DeviceCard GetFocusedMirrorDevice()
         {
             IntPtr foregroundWindow = GetForegroundWindow();
-            if (foregroundWindow == IntPtr.Zero)
+            return GetMirrorDeviceForWindow(foregroundWindow);
+        }
+
+        internal DeviceCard GetMirrorDeviceForWindow(IntPtr window)
+        {
+            if (window == IntPtr.Zero)
                 return null;
 
             uint processId;
-            GetWindowThreadProcessId(foregroundWindow, out processId);
+            GetWindowThreadProcessId(window, out processId);
             if (processId == device1.MirrorProcessId)
                 return device1;
             if (processId == device2.MirrorProcessId)

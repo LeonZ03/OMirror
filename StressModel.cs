@@ -14,6 +14,8 @@ namespace OPhoneMirror
             int activeGeneration = 0;
             int recoveryAttempts = 0;
             bool stopRequested = false;
+            bool phoneOwnsKeyboard = false;
+            bool suppressedModifierHeld = false;
 
             for (int i = 0; i < iterations; i++)
             {
@@ -80,10 +82,21 @@ namespace OPhoneMirror
                         break;
                 }
 
+                if (random.Next(12) == 0)
+                {
+                    phoneOwnsKeyboard = !phoneOwnsKeyboard;
+                    if (!phoneOwnsKeyboard)
+                        suppressedModifierHeld = false;
+                    else if (random.Next(2) == 0)
+                        suppressedModifierHeld = true;
+                }
+
                 if (activeGeneration < 0 || recoveryAttempts > 2)
                     return 1;
                 if (state == State.Stopped && stopRequested)
                     return 2;
+                if (!phoneOwnsKeyboard && suppressedModifierHeld)
+                    return 3;
             }
             return 0;
         }

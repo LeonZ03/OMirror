@@ -90,10 +90,13 @@ namespace OPhoneMirror
             }
             else if (roll < 50)
             {
-                form.StressTogglePicker();
                 if (random.Next(2) == 0)
+                    form.StressToggleKeyboardOwnership();
+                else
+                    form.StressTogglePicker();
+                if (random.Next(3) == 0)
                     form.StressClosePicker();
-                Diagnostics.Trace("stress", "picker", "step=" + actionNumber);
+                Diagnostics.Trace("stress", "focus-or-picker", "step=" + actionNumber);
             }
             else if (roll < 65)
             {
