@@ -12,8 +12,8 @@ using System.Windows.Forms;
 
 [assembly: AssemblyTitle("OPhoneMirror")]
 [assembly: AssemblyProduct("OPhoneMirror")]
-[assembly: AssemblyVersion("1.13.1.0")]
-[assembly: AssemblyFileVersion("1.13.1.0")]
+[assembly: AssemblyVersion("1.13.2.0")]
+[assembly: AssemblyFileVersion("1.13.2.0")]
 
 namespace OPhoneMirror
 {
@@ -1755,7 +1755,7 @@ namespace OPhoneMirror
             Controls.Add(footerStatus);
 
             Label version = new Label();
-            version.Text = "v1.13.1";
+            version.Text = "v1.13.2";
             version.ForeColor = muted;
             version.AutoSize = false;
             version.Location = new Point(512, 488);
@@ -1899,6 +1899,7 @@ namespace OPhoneMirror
         internal bool StressTopMostSetting { get { return alwaysOnTopToggle.Checked; } }
         internal int StressKeyboardSetting { get { return keyboardMode; } }
         internal int StressActiveDeviceIndex { get { return activeDevice == device2 ? 1 : 0; } }
+        internal bool UsesShortPhraseKeyboard { get { return keyboardMode == 0; } }
 
         internal bool StressPrepare(int deviceIndex)
         {
@@ -2638,7 +2639,9 @@ namespace OPhoneMirror
             {
                 int previousDeviceMode = LoadDeviceMode(device.Serial);
                 bool normalizeShortPhrase = keyboardMode == 0 && previousDeviceMode == 1;
-                string keyboardArg = keyboardMode == 1 ? " --keyboard=uhid" : string.Empty;
+                string keyboardArg = keyboardMode == 1
+                    ? " --keyboard=uhid"
+                    : " --keyboard=sdk --raw-key-events";
                 string args = string.Format(
                     "--serial={0} --window-title=\"{1} USB Low Latency\" --video-codec=h264 --max-fps=60 --video-bit-rate=16M --video-buffer=0 --no-audio --shortcut-mod=lalt --window-x={2} --window-y={5} --window-width=450 --window-height=900 -V {4}{3}",
                     device.Serial, device.Name, device.LastWindowX, keyboardArg,

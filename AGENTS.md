@@ -6,7 +6,7 @@ This file is the compact source of truth for AI agents working in this repositor
 
 - Name: `OPhoneMirror`.
 - Platform: Windows desktop, WinForms on .NET Framework.
-- Current UI version: `1.13.1`; bundled runtime expected: scrcpy `4.1` with ADB `37.0.1`.
+- Current UI version: `1.13.2`; bundled runtime expected: scrcpy `4.1` with ADB `37.0.1`.
 - There is intentionally no `.csproj`: `build.ps1` invokes the .NET Framework `csc.exe` directly.
 - Repository source is self-contained. `dist/` and `devices.local.txt` are local-only and ignored.
 
@@ -15,7 +15,7 @@ This file is the compact source of truth for AI agents working in this repositor
 - `OPhoneMirror.cs`: shared Apple-inspired light/dark UI tokens and controls, owned device-picker popover, current-device state, scrcpy launch/stop/restart, keyboard mode persistence, and mode normalization.
 - `TransferForm.cs`: themed two-pane PC/Android file browser, collapsible activity drawer, selection, transfer queue, collision confirmation, and large-directory batching.
 - `AdbClient.cs`: quoted ADB execution, UTF-8 shell input, Unicode-safe file transfer, and tar-stream directory receive.
-- `KeyboardCapture.cs`: focus-driven keyboard ownership, temporary English input context for scrcpy, and foreground-only interception of Windows-reserved keys.
+- `KeyboardCapture.cs`: focus-driven keyboard ownership and foreground-only interception of Windows-reserved keys without changing the Windows input layout.
 - `app.manifest`: `asInvoker`; do not elevate, because Windows blocks Explorer drag/drop into elevated windows.
 - `devices.example.txt`: public configuration template.
 - `devices.local.txt`: real serials and labels; never commit.
@@ -52,7 +52,7 @@ Keyboard, screen-off, always-on-top, theme, and last-selected-device settings li
 - `ModernButton` is a fully owner-drawn `Control`, not a native `Button`, and intentionally has no rounded Win32 `Region`. The single anti-aliased paint boundary avoids DPI-scaled corner fringes while the custom accessibility object preserves push-button semantics and keyboard activation.
 - `app.manifest` declares `PerMonitorV2,PerMonitor` plus the legacy `true/pm` fallback. Keep the existing `AutoScaleMode.Dpi` forms so Windows renders text and vectors at the monitor's native scale instead of bitmap-stretching the whole window.
 - Input modes are deliberately different:
-  - Short-phrase mode uses scrcpy default SDK keyboard and adds no `--keyboard`, `--raw-key-events`, or `--prefer-text` flag.
+  - Short-phrase mode uses `--keyboard=sdk --raw-key-events`; its single Shift is consumed before the Windows IME and injected as Android `SHIFT_LEFT/RIGHT` so Sogou can toggle language without changing Windows.
   - Numeric-candidate mode adds only `--keyboard=uhid`.
 - Mode changes find matching `scrcpy.exe` processes through WMI, close them, wait about 700 ms, and restart them with the selected backend.
 - The two keyboard backends are presented as one keyboard-accessible segmented selector; changing it still uses the existing hot-restart path.
@@ -63,8 +63,8 @@ Keyboard, screen-off, always-on-top, theme, and last-selected-device settings li
   - `Win` and `Ctrl+Esc` → Android `HOME` (`3`).
   - `Alt+F4` → Android `BACK` (`4`) without closing scrcpy.
   - Caps Lock, Print Screen, volume, and media keys are consumed by Windows and mapped to their Android keycodes.
-  - Ordinary Shift/Ctrl/Alt and text keys are never converted to ADB taps; they remain in scrcpy's native SDK/UHID path with genuine down/up state.
-  - A 75 ms focus tracker temporarily requests US English and closes the Windows IME only for the foreground scrcpy window. It does not persist a Windows language change.
+  - Ordinary Ctrl/Alt and text keys remain in scrcpy's native SDK/UHID path. Numeric-candidate UHID Shift also stays native; only short-phrase SDK Shift uses Android key injection.
+  - The 75 ms focus tracker never requests a Windows keyboard layout and never opens/closes the Windows IME. Clicking scrcpy must leave the taskbar input indicator unchanged.
   - All hooks and held suppression state are released on focus loss or form close; no keys are logged. `Ctrl+Alt+Delete` remains Windows-owned by design.
 - Android shared storage defaults to `/sdcard/Download`; quick links include `/sdcard/Download` and `/sdcard/DCIM`.
 - The transfer activity panel defaults collapsed, expands automatically when a transfer starts, and remains manually collapsible while retaining task history.
