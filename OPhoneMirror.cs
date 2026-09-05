@@ -12,8 +12,8 @@ using System.Windows.Forms;
 
 [assembly: AssemblyTitle("OPhoneMirror")]
 [assembly: AssemblyProduct("OPhoneMirror")]
-[assembly: AssemblyVersion("1.13.0.0")]
-[assembly: AssemblyFileVersion("1.13.0.0")]
+[assembly: AssemblyVersion("1.13.3.0")]
+[assembly: AssemblyFileVersion("1.13.3.0")]
 
 namespace OPhoneMirror
 {
@@ -1754,7 +1754,7 @@ namespace OPhoneMirror
             Controls.Add(footerStatus);
 
             Label version = new Label();
-            version.Text = "v1.13.0";
+            version.Text = "v1.13.3";
             version.ForeColor = muted;
             version.AutoSize = false;
             version.Location = new Point(512, 488);
@@ -2402,6 +2402,8 @@ namespace OPhoneMirror
             }
             catch { }
             UpdateMirrorAction(device);
+            if (alreadyRunning && screenOffToggle.Checked)
+                StartScreenControl(device);
         }
 
         private void MirrorProcessExited(DeviceCard device, int processId, int sessionGeneration)
@@ -2896,12 +2898,18 @@ namespace OPhoneMirror
                 if (IsDisposed || requestId != device.ScreenPowerRequestId)
                     return;
                 bool desiredOff = device.ScreenDesiredOff;
-                bool sent = SendMirrorScreenPower(device, !desiredOff);
+                bool sent = desiredOff
+                    ? SendMirrorScreenPower(device, false)
+                    : SendAndroidWake(device);
                 if (!sent && requestId == device.ScreenPowerRequestId)
                 {
                     System.Threading.Thread.Sleep(150);
                     if (!IsDisposed && requestId == device.ScreenPowerRequestId)
-                        sent = SendMirrorScreenPower(device, !desiredOff);
+                    {
+                        sent = desiredOff
+                            ? SendMirrorScreenPower(device, false)
+                            : SendAndroidWake(device);
+                    }
                 }
                 if (IsDisposed || requestId != device.ScreenPowerRequestId ||
                     generation != device.SessionGeneration)
@@ -2932,6 +2940,13 @@ namespace OPhoneMirror
             });
         }
 
+        private bool SendAndroidWake(DeviceCard device)
+        {
+            AdbResult result = new AdbClient(adbPath, device.Serial)
+                .Shell("input keyevent 224", 5000);
+            return result.Success;
+        }
+
         private bool SendMirrorScreenPower(DeviceCard device, bool turnOn)
         {
             try
@@ -2953,17 +2968,21 @@ namespace OPhoneMirror
                     if (window == IntPtr.Zero)
                         return false;
                     IntPtr previousWindow = GetForegroundWindow();
-                    if (!SetForegroundWindow(window))
+                    if (!TrySetForegroundWindow(window))
                         return false;
                     try
                     {
-                        System.Threading.Thread.Sleep(35);
-                        return SendScreenPowerShortcut(turnOn);
+                        System.Threading.Thread.Sleep(100);
+                        bool sent = SendScreenPowerShortcut(turnOn);
+                        // SendInput queues the keystrokes. Keep scrcpy focused
+                        // briefly so SDL consumes the shortcut before focus is restored.
+                        System.Threading.Thread.Sleep(150);
+                        return sent;
                     }
                     finally
                     {
                         if (previousWindow != IntPtr.Zero && previousWindow != window)
-                            SetForegroundWindow(previousWindow);
+                            TrySetForegroundWindow(previousWindow);
                     }
                 }
             }
@@ -2995,6 +3014,46 @@ namespace OPhoneMirror
                 release[0] = CreateKeyInput(VirtualKeyLShift, true);
                 release[1] = CreateKeyInput(VirtualKeyLMenu, true);
                 SendInput((uint)release.Length, release, Marshal.SizeOf(typeof(Input)));
+            }
+        }
+
+        private static bool TrySetForegroundWindow(IntPtr window)
+        {
+            if (window == IntPtr.Zero)
+                return false;
+
+            uint ignoredProcessId;
+            uint targetThread = GetWindowThreadProcessId(window, out ignoredProcessId);
+            IntPtr currentForeground = GetForegroundWindow();
+            uint foregroundThread = currentForeground == IntPtr.Zero
+                ? 0
+                : GetWindowThreadProcessId(currentForeground, out ignoredProcessId);
+            uint currentThread = GetCurrentThreadId();
+            bool attachedForeground = false;
+            bool attachedTarget = false;
+            try
+            {
+                if (foregroundThread != 0 && foregroundThread != currentThread)
+                    attachedForeground = AttachThreadInput(currentThread, foregroundThread, true);
+                if (targetThread != 0 && targetThread != currentThread && targetThread != foregroundThread)
+                    attachedTarget = AttachThreadInput(currentThread, targetThread, true);
+                BringWindowToTop(window);
+                SetForegroundWindow(window);
+                SetFocus(window);
+                for (int attempt = 0; attempt < 10; attempt++)
+                {
+                    if (GetForegroundWindow() == window)
+                        return true;
+                    System.Threading.Thread.Sleep(20);
+                }
+                return false;
+            }
+            finally
+            {
+                if (attachedTarget)
+                    AttachThreadInput(currentThread, targetThread, false);
+                if (attachedForeground)
+                    AttachThreadInput(currentThread, foregroundThread, false);
             }
         }
 
@@ -3278,6 +3337,21 @@ namespace OPhoneMirror
         [DllImport("user32.dll")]
         private static extern bool SetForegroundWindow(IntPtr window);
 
+        [DllImport("user32.dll")]
+        private static extern bool BringWindowToTop(IntPtr window);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr SetFocus(IntPtr window);
+
+        [DllImport("user32.dll")]
+        private static extern bool AttachThreadInput(
+            uint threadIdAttach,
+            uint threadIdAttachTo,
+            bool attach);
+
+        [DllImport("kernel32.dll")]
+        private static extern uint GetCurrentThreadId();
+
         [DllImport("user32.dll", SetLastError = true)]
         private static extern uint SendInput(uint count, Input[] inputs, int size);
 
@@ -3288,11 +3362,21 @@ namespace OPhoneMirror
             public InputUnion Data;
         }
 
+        // Win32 INPUT contains a union whose largest member is MOUSEINPUT.
+        // Declaring every native union member keeps sizeof(INPUT) at 40 bytes
+        // on x64 and 28 bytes on x86. A keyboard-only union is too small, so
+        // SendInput fails with ERROR_INVALID_PARAMETER.
         [StructLayout(LayoutKind.Explicit)]
         private struct InputUnion
         {
             [FieldOffset(0)]
             public KeyboardInput Keyboard;
+
+            [FieldOffset(0)]
+            public MouseInput Mouse;
+
+            [FieldOffset(0)]
+            public HardwareInput Hardware;
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -3303,6 +3387,34 @@ namespace OPhoneMirror
             public uint Flags;
             public uint Time;
             public UIntPtr ExtraInfo;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct MouseInput
+        {
+            public int X;
+            public int Y;
+            public uint MouseData;
+            public uint Flags;
+            public uint Time;
+            public UIntPtr ExtraInfo;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct HardwareInput
+        {
+            public uint Message;
+            public ushort ParameterLow;
+            public ushort ParameterHigh;
+        }
+
+        internal static bool IsScreenPowerInputInteropValid
+        {
+            get
+            {
+                int expectedSize = IntPtr.Size == 8 ? 40 : 28;
+                return Marshal.SizeOf(typeof(Input)) == expectedSize;
+            }
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -3374,7 +3486,11 @@ namespace OPhoneMirror
             if (args.Length == 1 && args[0] == "--self-test")
             {
                 using (MainForm form = new MainForm())
+                {
+                    if (!MainForm.IsScreenPowerInputInteropValid)
+                        return 3;
                     return form.HasConfiguredDevices ? 0 : 2;
+                }
             }
 
             Application.Run(new MainForm());

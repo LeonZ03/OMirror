@@ -6,7 +6,7 @@ This file is the compact source of truth for AI agents working in this repositor
 
 - Name: `OPhoneMirror`.
 - Platform: Windows desktop, WinForms on .NET Framework.
-- Current UI version: `1.13.0`; bundled runtime expected: scrcpy `4.1` with ADB `37.0.1`.
+- Current UI version: `1.13.3`; bundled runtime expected: scrcpy `4.1` with ADB `37.0.1`.
 - There is intentionally no `.csproj`: `build.ps1` invokes the .NET Framework `csc.exe` directly.
 - Repository source is self-contained. `dist/` and `devices.local.txt` are local-only and ignored.
 
@@ -39,7 +39,9 @@ Keyboard, screen-off, always-on-top, theme, and last-selected-device settings li
 ## Verified implementation facts
 
 - Mirror launch preset: USB serial, H.264, 60 fps, 16 Mbps, zero video buffer, no audio, 450×900 window. Do not pass scrcpy's `--always-on-top`; the persisted control-panel checkbox applies `HWND_TOPMOST` or `HWND_NOTOPMOST` after the window is created and hot-applies the same state without restarting scrcpy.
-- The persisted “仅熄手机屏幕” setting is hot-applied through the one existing primary mirror only. It serializes/coalesces requests and uses documented scrcpy shortcuts: `Left Alt+O` off and `Left Alt+Left Shift+O` on. Never use right-click to wake: when the display is already on, scrcpy maps right-click to Android Back. The implementation always releases modifiers and restores the previous foreground window. Never add `--turn-screen-off` to launch arguments or start a second control-only scrcpy instance.
+- The persisted “仅熄手机屏幕” setting is hot-applied through the one existing primary mirror only. It serializes/coalesces requests, uses scrcpy `Left Alt+O` to turn the physical display off, and uses Android `KEYCODE_WAKEUP` (`224`) to restore it. Reno6 testing showed that Windows Sogou can consume the Shift in scrcpy's `MOD+Shift+O`, so that shortcut is not reliable for waking. Never use right-click (Android Back when already awake) or the toggling power key (`26`). The implementation releases modifiers and restores the previous foreground window. Never add `--turn-screen-off` to launch arguments or start a second control-only scrcpy instance.
+- The Win32 `INPUT` interop union includes `MOUSEINPUT`, `KEYBDINPUT`, and `HARDWAREINPUT`, so `Marshal.SizeOf(INPUT)` is 40 bytes on x64 and 28 bytes on x86. Do not reduce it to the keyboard member: Windows rejects the undersized `SendInput` call with `ERROR_INVALID_PARAMETER` and screen-power shortcuts silently stop working.
+- After activating scrcpy for a screen-power shortcut, keep it focused for 150 ms after `SendInput`; restoring focus immediately can make SDL discard the queued keys on focus loss.
 - Reno6 repeatedly entered ADB `offline` with the ADB `37.0.0` bundled by scrcpy 4.1, including while no OPhoneMirror/scrcpy process was running. Starting the separately installed Platform Tools ADB `37.0.1-15733141` immediately restored `device`. Release builds must therefore pass `-AdbDir` and bundle `adb.exe`, `AdbWinApi.dll`, and `AdbWinUsbApi.dll` from that tested runtime.
 - Periodic ADB probes run on the thread pool behind an interlocked single-flight guard so a slow/offline USB transport cannot freeze the WinForms UI.
 - The main window presents one active device. Clicking its selector opens a two-row device list; selection is persisted by index and updates the launch/transfer actions without changing the per-device scrcpy process state.
