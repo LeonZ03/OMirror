@@ -10,7 +10,6 @@ $outputDir = Join-Path $projectRoot "dist\OMirror"
 $manifest = Join-Path $projectRoot "app.manifest"
 $appIcon = Join-Path $projectRoot "assets\OMirror.ico"
 $outputExe = Join-Path $outputDir "OMirror.exe"
-$deviceConfig = Join-Path $projectRoot "devices.local.txt"
 
 $compilerCandidates = @(
     (Join-Path $env:WINDIR "Microsoft.NET\Framework64\v4.0.30319\csc.exe"),
@@ -51,6 +50,7 @@ New-Item -ItemType Directory -Path $outputDir | Out-Null
 
 $sources = @(
     (Join-Path $projectRoot "OMirror.cs"),
+    (Join-Path $projectRoot "DeviceRegistry.cs"),
     (Join-Path $projectRoot "AdbClient.cs"),
     (Join-Path $projectRoot "KeyboardCapture.cs"),
     (Join-Path $projectRoot "TransferForm.cs"),
@@ -62,6 +62,7 @@ $sources = @(
 & $compiler /nologo /target:winexe /optimize+ "/win32manifest:$manifest" "/win32icon:$appIcon" `
     /reference:System.dll /reference:System.Drawing.dll `
     /reference:System.Windows.Forms.dll /reference:System.Management.dll `
+    /reference:System.Runtime.Serialization.dll `
     "/out:$outputExe" $sources
 if ($LASTEXITCODE -ne 0) {
     throw "OMirror 编译失败，退出码：$LASTEXITCODE"
@@ -78,13 +79,9 @@ if ($AdbDir) {
         Copy-Item -LiteralPath $sourceFile -Destination (Join-Path $outputDir "scrcpy\$fileName") -Force
     }
 }
-if (Test-Path -LiteralPath $deviceConfig) {
-    Copy-Item -LiteralPath $deviceConfig -Destination (Join-Path $outputDir "devices.local.txt")
-}
-
 $smokeTest = Start-Process -FilePath $outputExe -ArgumentList "--self-test" -Wait -PassThru
 if ($smokeTest.ExitCode -ne 0) {
-    throw "OMirror 烟雾测试失败，退出码：$($smokeTest.ExitCode)。请检查 scrcpy 和 devices.local.txt。"
+    throw "OMirror 烟雾测试失败，退出码：$($smokeTest.ExitCode)。请检查 ADB、scrcpy 和设备库自检。"
 }
 
 Write-Host "构建完成：$outputExe"

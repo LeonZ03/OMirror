@@ -6,35 +6,28 @@ This file is the compact source of truth for AI agents working in this repositor
 
 - Name: `OMirror`.
 - Platform: Windows desktop, WinForms on .NET Framework.
-- Current UI version: `1.14.0`; bundled runtime expected: scrcpy `4.1` with ADB `37.0.1`.
+- Current UI version: `1.15.0`; bundled runtime expected: scrcpy `4.1` with ADB `37.0.1`.
 - There is intentionally no `.csproj`: `build.ps1` invokes the .NET Framework `csc.exe` directly.
-- Repository source is self-contained. `dist/` and `devices.local.txt` are local-only and ignored.
+- Repository source is self-contained. `dist/` and the legacy `devices.local.txt` are local-only and ignored.
 
 ## Source map
 
-- `OMirror.cs`: shared Apple-inspired light/dark UI tokens and controls, owned device-picker popover, current-device state, scrcpy launch/stop/restart, keyboard mode persistence, and mode normalization.
+- `OMirror.cs`: shared Apple-inspired light/dark UI tokens and controls, dynamic device-picker popover, current-device state, scrcpy launch/stop/restart, keyboard mode persistence, and mode normalization.
+- `DeviceRegistry.cs`: USB-only ADB discovery/parser, read-only Android metadata lookup, atomic JSON device-store persistence, and device-registry self-tests.
 - `TransferForm.cs`: themed two-pane PC/Android file browser, collapsible activity drawer, selection, transfer queue, collision confirmation, and large-directory batching.
 - `AdbClient.cs`: quoted ADB execution, UTF-8 shell input, Unicode-safe file transfer, and tar-stream directory receive.
 - `KeyboardCapture.cs`: low-level Windows keyboard hook active only when a tracked scrcpy window owns foreground focus.
 - `app.manifest`: `asInvoker`; do not elevate, because Windows blocks Explorer drag/drop into elevated windows.
-- `devices.example.txt`: public configuration template.
-- `devices.local.txt`: real serials and labels; never commit.
 - `build.ps1`: canonical build/package entry point.
 - `Diagnostics.cs`: bounded in-memory diagnostics and redacted abnormal-exit bundles under `%LOCALAPPDATA%`.
 - `StressModel.cs`, `StressRunner.cs`, and `tests/Run-StabilityStress.ps1`: deterministic lifecycle model test plus safe Reno6 live stress runner/replay entrypoint.
-- `OMirror.exe --self-test`: non-interactive package check; exit `0` means both device entries plus ADB/scrcpy were found, while exit `2` means configuration/runtime is incomplete.
+- `OMirror.exe --self-test`: non-interactive package check; exit `0` means ADB, scrcpy, USB parsing, and temporary device-store read/write passed; exit `2` means one of those checks failed.
 
 ## Configuration contract
 
-`devices.local.txt` contains up to two non-comment lines:
+Saved devices live only in `%LOCALAPPDATA%\OMirror\devices.json`. The file is written through a same-directory temporary file replacement, and the selected device is persisted by ADB serial rather than list index. Version 1.15.0 intentionally does not read or import `devices.local.txt`; never restore hard-coded serials, IP addresses, usernames, or absolute user paths in tracked source.
 
-```text
-display name|model description|adb serial|window x
-```
-
-The executable reads this file beside itself. Missing/invalid entries become disabled “未配置设备” cards. Never restore hard-coded serials, IP addresses, usernames, or absolute user paths in tracked source.
-
-Keyboard, screen-off, always-on-top, theme, and last-selected-device settings live under `%LOCALAPPDATA%\OMirror`; they are runtime state, not repository content.
+Keyboard, screen-off, always-on-top, theme, selected-device, per-device keyboard mode, and window-position settings also live under `%LOCALAPPDATA%\OMirror`; they are runtime state, not repository content.
 
 ## Verified implementation facts
 
@@ -44,7 +37,9 @@ Keyboard, screen-off, always-on-top, theme, and last-selected-device settings li
 - After activating scrcpy for a screen-power shortcut, keep it focused for 150 ms after `SendInput`; restoring focus immediately can make SDL discard the queued keys on focus loss.
 - Reno6 repeatedly entered ADB `offline` with the ADB `37.0.0` bundled by scrcpy 4.1, including while no OMirror/scrcpy process was running. Starting the separately installed Platform Tools ADB `37.0.1-15733141` immediately restored `device`. Release builds must therefore pass `-AdbDir` and bundle `adb.exe`, `AdbWinApi.dll`, and `AdbWinUsbApi.dll` from that tested runtime.
 - Periodic ADB probes run on the thread pool behind an interlocked single-flight guard so a slow/offline USB transport cannot freeze the WinForms UI.
-- The main window presents one active device. Clicking its selector opens a two-row device list; selection is persisted by index and updates the launch/transfer actions without changing the per-device scrcpy process state.
+- The main window presents one active device. Refresh asynchronously parses `adb devices -l` and performs read-only property queries for online phones. Windows may omit the `usb:` detail for wired phones, so discovery accepts ordinary hardware serials while excluding host/port serials, modern `_adb-tls` names, and emulators; wireless transports and emulators are never auto-added.
+- The picker is a dynamic collection ordered as current saved device, other saved online devices, saved offline devices, new online devices, then new unauthorized/offline devices. It shows at most four rows before scrolling.
+- A new online device is saved and selected only after the user clicks `连接`; this also starts its first mirror. Saved rows always expose a `···` menu. Deleting a record stops that device's mirror, invalidates delayed callbacks, removes its per-device mode/position, and never writes to the phone. A still-connected deleted phone immediately becomes an unsaved new device.
 - Double-clicking the `OMirror` wordmark centers the active device's existing mirror window in the working area of the monitor containing the control panel. It preserves the mirror size and configured topmost state, updates the remembered coordinates, and never restarts scrcpy.
 - The selector list is an owned non-activating tool window, anchored below the active-device row. A main-window click closes it without deactivating the control panel; Escape and external app activation also close it.
 - Mirror lifecycle is `Stopped / Starting / Running / Stopping / Recovering`. Each process has a generation id, so stale exit callbacks cannot alter a new session. Exit code `2` (disconnect) and unexpected nonzero exits may retry twice after 750ms and 2s; manual stop and keyboard hot-restart never consume the retry budget.
@@ -88,13 +83,12 @@ Expected output:
 ```text
 dist\OMirror\OMirror.exe
 dist\OMirror\scrcpy\...
-dist\OMirror\devices.local.txt  # only when local config exists
 ```
 
 Before committing:
 
 1. Run `build.ps1` and confirm compiler exit code 0.
-2. Confirm `dist/` and `devices.local.txt` remain ignored.
+2. Confirm `dist/` and the legacy `devices.local.txt` remain ignored, and that no `devices.json` exists inside the repository or package.
 3. Search tracked files for real serials, private IPs, home-directory usernames, tokens, passwords, private keys, and generated binaries.
 4. For transfer changes, validate both directions with a Unicode filename; for directory changes, include a nested Unicode folder and compare hashes.
 5. For Camera/listing changes, verify a large directory displays only the first batch and “更多” remains enabled.

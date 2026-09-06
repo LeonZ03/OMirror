@@ -4,6 +4,7 @@
 
 # Per-machine device identifiers (never commit)
 /devices.local.txt
+/devices.json
 
 # IDE and compiler state
 /.vs/

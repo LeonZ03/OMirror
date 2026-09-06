@@ -4,7 +4,7 @@ OMirror 是一个 Windows 桌面工具，通过 USB ADB 和 scrcpy 投屏并控�
 
 ## 功能
 
-- 两台已配置 Android 设备的 USB 在线检测；主界面通过设备列表选择当前手机，并记住上次选择。
+- 自动发现通过 USB ADB 连接的 Android 设备；可连接新手机、保留离线历史设备并删除本地设备记录。
 - 紧凑的 Apple 风格设备控制中心，支持自动、浅色和深色外观，并可跟随 Windows 应用主题。
 - 投屏按钮会显示连接中、投屏中和停止中状态；运行后可直接从控制面板停止投屏。
 - 清晰的系统中文字体、柔和卡片、矢量图标和克制的状态色，并支持完整键盘焦点操作。
@@ -28,13 +28,6 @@ OMirror 是一个 Windows 桌面工具，通过 USB ADB 和 scrcpy 投屏并控�
 ## 配置与构建
 
 ```powershell
-# 使用已下载的 scrcpy 中的 ADB 查看设备；复制需要使用的 adb serial。
-& "C:\path\to\scrcpy-win64-v4.1\adb.exe" devices -l
-
-# 创建本机配置。devices.local.txt 已被 Git 忽略，不会上传设备序列号。
-Copy-Item .\devices.example.txt .\devices.local.txt
-notepad .\devices.local.txt
-
 # 编译 EXE，并把指定的官方 scrcpy 目录复制进可运行包。
 # 使用 scrcpy 4.1，并用新版 Platform Tools 覆盖其自带 ADB。
 .\build.ps1 -ScrcpyDir "C:\path\to\scrcpy-win64-v4.1" -AdbDir "C:\path\to\platform-tools"
@@ -42,7 +35,7 @@ notepad .\devices.local.txt
 # 启动构建产物；运行时不依赖源码目录。
 .\dist\OMirror\OMirror.exe
 
-# 可选：无界面检查设备配置、ADB 和 scrcpy 是否齐全；退出码 0 表示通过。
+# 可选：无界面检查 ADB、scrcpy、设备枚举解析和本地设备库；退出码 0 表示通过。
 $process = Start-Process .\dist\OMirror\OMirror.exe -ArgumentList "--self-test" -Wait -PassThru
 $process.ExitCode
 
@@ -57,11 +50,7 @@ $process.ExitCode
 .\tests\Run-StabilityStress.ps1 -DeviceIndex 0 -InjectAdbFaults -FaultCycles 10
 ```
 
-设备配置每行格式如下，最多读取两行：
-
-```text
-显示名称|型号说明|ADB序列号|投屏窗口X坐标
-```
+首次启动时设备列表为空。连接手机、允许 USB 调试后点击刷新，再在新设备行点击“连接”；OMirror 会把设备记录保存在当前 Windows 用户的本地应用数据中。列表中的 `···` 可删除历史记录，删除不会修改手机数据。
 
 ## 常用操作
 
@@ -78,4 +67,4 @@ $process.ExitCode
 
 ## 隐私
 
-真实设备配置保存在 `devices.local.txt`，运行设置保存在 `%LOCALAPPDATA%\OMirror`。仅在异常退出或压力测试失败时，会在 `%LOCALAPPDATA%\OMirror\Diagnostics` 留下最近五份脱敏日志。仓库忽略构建产物、设备标识、密钥文件和本机临时数据；提交前仍应检查暂存内容，避免上传凭据或个人文件。
+设备记录和运行设置保存在 `%LOCALAPPDATA%\OMirror`，其中 `devices.json` 只存在于本机。仅在异常退出或压力测试失败时，会在 `%LOCALAPPDATA%\OMirror\Diagnostics` 留下最近五份脱敏日志。仓库忽略构建产物、设备标识、密钥文件和本机临时数据；提交前仍应检查暂存内容，避免上传凭据或个人文件。

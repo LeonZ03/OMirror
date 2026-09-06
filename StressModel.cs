@@ -14,13 +14,14 @@ namespace OMirror
             int activeGeneration = 0;
             int recoveryAttempts = 0;
             bool stopRequested = false;
+            bool saved = true;
 
             for (int i = 0; i < iterations; i++)
             {
-                switch (random.Next(8))
+                switch (random.Next(10))
                 {
                     case 0: // user starts
-                        if (state == State.Stopped)
+                        if (saved && state == State.Stopped)
                         {
                             state = State.Starting;
                             activeGeneration = ++generation;
@@ -40,7 +41,7 @@ namespace OMirror
                         break;
                     case 3: // process exit, including a deliberately stale callback
                         int callbackGeneration = random.Next(4) == 0 ? activeGeneration - 1 : activeGeneration;
-                        if (callbackGeneration != activeGeneration)
+                        if (!saved || callbackGeneration != activeGeneration)
                             break;
                         if (stopRequested || state == State.Stopping)
                         {
@@ -59,7 +60,7 @@ namespace OMirror
                         }
                         break;
                     case 4: // recovery launch
-                        if (state == State.Recovering)
+                        if (saved && state == State.Recovering)
                         {
                             state = State.Starting;
                             activeGeneration = ++generation;
@@ -78,12 +79,30 @@ namespace OMirror
                             state = State.Stopping;
                         }
                         break;
+                    case 8: // deleting a saved device invalidates every old callback
+                        saved = false;
+                        activeGeneration = ++generation;
+                        recoveryAttempts = 0;
+                        stopRequested = false;
+                        state = State.Stopped;
+                        break;
+                    case 9: // the still-connected phone is explicitly added again
+                        if (!saved)
+                        {
+                            saved = true;
+                            recoveryAttempts = 0;
+                            stopRequested = false;
+                            state = State.Stopped;
+                        }
+                        break;
                 }
 
                 if (activeGeneration < 0 || recoveryAttempts > 2)
                     return 1;
                 if (state == State.Stopped && stopRequested)
                     return 2;
+                if (!saved && state != State.Stopped)
+                    return 3;
             }
             return 0;
         }

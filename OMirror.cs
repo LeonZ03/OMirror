@@ -12,19 +12,11 @@ using System.Windows.Forms;
 
 [assembly: AssemblyTitle("OMirror")]
 [assembly: AssemblyProduct("OMirror")]
-[assembly: AssemblyVersion("1.14.0.0")]
-[assembly: AssemblyFileVersion("1.14.0.0")]
+[assembly: AssemblyVersion("1.15.0.0")]
+[assembly: AssemblyFileVersion("1.15.0.0")]
 
 namespace OMirror
 {
-    internal sealed class DeviceDefinition
-    {
-        public string Name;
-        public string Model;
-        public string Serial;
-        public int WindowX;
-    }
-
     internal enum AppThemeMode
     {
         Auto,
@@ -1161,8 +1153,11 @@ namespace OMirror
     {
         private DeviceCard device;
         private bool hovered;
+        private bool actionHandled;
 
         public event EventHandler DeviceChosen;
+        public event EventHandler ConnectRequested;
+        public event EventHandler MoreRequested;
         public bool Selected;
         public bool ShowsChevron;
 
@@ -1205,8 +1200,19 @@ namespace OMirror
             string state = device.MirrorStarting ? "正在启动投屏" :
                 device.MirrorStopping ? "正在停止投屏" :
                 device.MirrorActive ? "正在投屏" :
+                device.IsPlaceholder ? "未选择设备" :
+                device.AdbState == DeviceAdbState.Unauthorized ? "等待 USB 调试授权" :
+                device.AdbState == DeviceAdbState.Offline ? "ADB 设备离线" :
+                !device.IsSaved && device.IsOnline ? "新设备，可以连接" :
                 device.IsOnline ? "USB 已连接" : "未连接";
             AccessibleDescription = device.Model + "，" + state;
+            if (!ShowsChevron)
+            {
+                if (device.IsSaved)
+                    AccessibleDescription += "，按 Delete 打开删除菜单";
+                else if (device.IsOnline)
+                    AccessibleDescription += "，按 Enter 连接";
+            }
         }
 
         protected override void OnMouseEnter(EventArgs e)
@@ -1225,6 +1231,12 @@ namespace OMirror
 
         protected override void OnClick(EventArgs e)
         {
+            if (actionHandled)
+            {
+                actionHandled = false;
+                base.OnClick(e);
+                return;
+            }
             Focus();
             EventHandler handler = DeviceChosen;
             if (handler != null)
@@ -1232,9 +1244,47 @@ namespace OMirror
             base.OnClick(e);
         }
 
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left && !ShowsChevron && device != null)
+            {
+                if (!device.IsSaved && ConnectButtonBounds.Contains(e.Location))
+                {
+                    actionHandled = true;
+                    if (device.IsOnline && ConnectRequested != null)
+                        ConnectRequested(this, EventArgs.Empty);
+                    return;
+                }
+                if (device.IsSaved && MoreButtonBounds.Contains(e.Location))
+                {
+                    actionHandled = true;
+                    if (MoreRequested != null)
+                        MoreRequested(this, EventArgs.Empty);
+                    return;
+                }
+            }
+            base.OnMouseDown(e);
+        }
+
         protected override void OnKeyDown(KeyEventArgs e)
         {
-            if (e.KeyCode == Keys.Enter || e.KeyCode == Keys.Space ||
+            if ((e.KeyCode == Keys.Enter || e.KeyCode == Keys.Space) &&
+                !ShowsChevron && device != null && !device.IsSaved)
+            {
+                if (device.IsOnline && ConnectRequested != null)
+                    ConnectRequested(this, EventArgs.Empty);
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
+            else if (e.KeyCode == Keys.Delete && !ShowsChevron &&
+                device != null && device.IsSaved)
+            {
+                if (MoreRequested != null)
+                    MoreRequested(this, EventArgs.Empty);
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
+            else if (e.KeyCode == Keys.Enter || e.KeyCode == Keys.Space ||
                 (ShowsChevron && (e.KeyCode == Keys.Down || e.KeyCode == Keys.Up)))
             {
                 OnClick(EventArgs.Empty);
@@ -1287,7 +1337,7 @@ namespace OMirror
                 e.Graphics.DrawLine(phonePen, phone.Left + 6, phone.Bottom - 5, phone.Right - 6, phone.Bottom - 5);
             }
 
-            int textRightPadding = ShowsChevron ? 130 : 105;
+            int textRightPadding = ShowsChevron ? 130 : 175;
             Rectangle nameBounds = new Rectangle(52, 10, Math.Max(80, Width - 52 - textRightPadding), 24);
             Rectangle modelBounds = new Rectangle(52, 34, Math.Max(80, Width - 52 - textRightPadding), 20);
             using (Font nameFont = new Font(UiTheme.FontFamily, ShowsChevron ? 11F : 9.5F, FontStyle.Bold))
@@ -1301,11 +1351,15 @@ namespace OMirror
             string status = device.MirrorStarting ? "连接中" :
                 device.MirrorStopping ? "停止中" :
                 device.MirrorActive ? "投屏中" :
+                device.IsPlaceholder ? "未选择" :
+                device.AdbState == DeviceAdbState.Unauthorized ? "等待授权" :
+                device.AdbState == DeviceAdbState.Offline ? "设备离线" :
+                !device.IsSaved && device.IsOnline ? "新设备" :
                 device.IsOnline ? "已连接" : "未连接";
             Color statusColor = device.MirrorActive || device.MirrorStarting
                 ? UiTheme.Accent
                 : device.IsOnline ? UiTheme.Success : UiTheme.TextDim;
-            int statusRight = ShowsChevron ? Width - 46 : Selected ? Width - 48 : Width - 18;
+            int statusRight = ShowsChevron ? Width - 46 : Width - 88;
             int statusWidth = 70;
             Rectangle statusBounds = new Rectangle(statusRight - statusWidth, 0, statusWidth, Height);
             TextRenderer.DrawText(e.Graphics, status, Font, statusBounds,
@@ -1319,10 +1373,27 @@ namespace OMirror
                 UiIconRenderer.Draw(e.Graphics, UiIcon.ChevronDown,
                     new Rectangle(Width - 34, (Height - 18) / 2, 18, 18), UiTheme.TextMuted);
             }
-            else if (Selected)
+            else if (device.IsSaved)
             {
-                UiIconRenderer.Draw(e.Graphics, UiIcon.Check,
-                    new Rectangle(Width - 31, (Height - 18) / 2, 18, 18), UiTheme.Accent);
+                if (Selected)
+                {
+                    UiIconRenderer.Draw(e.Graphics, UiIcon.Check,
+                        new Rectangle(Width - 70, (Height - 18) / 2, 18, 18), UiTheme.Accent);
+                }
+                UiIconRenderer.Draw(e.Graphics, UiIcon.More,
+                    new Rectangle(Width - 38, (Height - 22) / 2, 22, 22), UiTheme.TextMuted);
+            }
+            else
+            {
+                Rectangle button = ConnectButtonBounds;
+                Color buttonFill = device.IsOnline ? UiTheme.Accent : UiTheme.SurfaceMuted;
+                Color buttonText = device.IsOnline ? Color.White : UiTheme.TextDim;
+                using (GraphicsPath buttonPath = RoundedPanel.CreateRoundedRect(button, 9))
+                using (SolidBrush buttonBrush = new SolidBrush(buttonFill))
+                    e.Graphics.FillPath(buttonBrush, buttonPath);
+                TextRenderer.DrawText(e.Graphics, "连接", Font, button, buttonText,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
+                    TextFormatFlags.NoPadding);
             }
 
             if (Focused && ShowFocusCues)
@@ -1332,6 +1403,16 @@ namespace OMirror
                     e.Graphics.DrawPath(focusPen, focusPath);
             }
         }
+
+        private Rectangle ConnectButtonBounds
+        {
+            get { return new Rectangle(Width - 76, (Height - 32) / 2, 62, 32); }
+        }
+
+        private Rectangle MoreButtonBounds
+        {
+            get { return new Rectangle(Width - 48, 4, 44, Height - 8); }
+        }
     }
 
     internal sealed class DeviceCard
@@ -1339,6 +1420,11 @@ namespace OMirror
         public string Name;
         public string Model;
         public string Serial;
+        public string AndroidVersion;
+        public bool IsSaved;
+        public bool IsDiscovered;
+        public bool IsPlaceholder;
+        public DeviceAdbState AdbState;
         public bool IsOnline;
         public bool MirrorActive;
         public int WindowX;
@@ -1512,8 +1598,11 @@ namespace OMirror
         private readonly string appDirectory;
         private readonly string adbPath;
         private readonly string scrcpyPath;
-        private readonly DeviceCard device1;
-        private readonly DeviceCard device2;
+        private readonly List<DeviceCard> devices = new List<DeviceCard>();
+        private readonly Dictionary<string, DeviceCard> devicesBySerial =
+            new Dictionary<string, DeviceCard>(StringComparer.OrdinalIgnoreCase);
+        private readonly List<DeviceSelectRow> deviceRows = new List<DeviceSelectRow>();
+        private readonly DeviceCard emptyDevice;
         private DeviceCard activeDevice;
         private readonly Timer refreshTimer;
         private readonly Timer restartTimer;
@@ -1523,19 +1612,19 @@ namespace OMirror
         private readonly ToggleSwitch screenOffToggle;
         private readonly ToggleSwitch alwaysOnTopToggle;
         private readonly DeviceSelectRow activeDeviceRow;
-        private readonly DeviceSelectRow device1Row;
-        private readonly DeviceSelectRow device2Row;
         private readonly DevicePickerForm devicePicker;
         private readonly PickerDismissFilter pickerDismissFilter;
         private readonly RoundedPanel settingsPanel;
         private readonly ModernButton launchButton;
         private readonly ModernButton transferButton;
+        private readonly ModernButton refreshButton;
         private readonly ToolTip toolTip;
         private readonly string settingsPath;
         private readonly string screenOffSettingsPath;
         private readonly string alwaysOnTopSettingsPath;
         private readonly string selectedDeviceSettingsPath;
         private readonly string themeSettingsPath;
+        private readonly string deviceStorePath;
         private readonly List<DeviceCard> pendingRestart = new List<DeviceCard>();
         private readonly HashSet<DeviceCard> pendingWakeBeforeRestart = new HashSet<DeviceCard>();
         private readonly KeyboardCapture keyboardCapture;
@@ -1566,6 +1655,9 @@ namespace OMirror
             themeSettingsPath = Path.Combine(
                 Path.GetDirectoryName(settingsPath),
                 "theme-mode.txt");
+            deviceStorePath = Path.Combine(
+                Path.GetDirectoryName(settingsPath),
+                "devices.json");
             keyboardMode = LoadKeyboardMode();
             themeMode = LoadThemeMode();
             UiTheme.SetDark(ThemeShouldBeDark());
@@ -1604,19 +1696,19 @@ namespace OMirror
             title.WordmarkDoubleClick += delegate { CenterActiveMirrorWindow(); };
             Controls.Add(title);
 
-            ModernButton refresh = MakeIconButton(UiIcon.Refresh, "刷新设备", UiButtonKind.Secondary);
-            refresh.Location = new Point(552, 18);
-            refresh.Size = new Size(40, 40);
-            refresh.CornerRadius = 20;
-            refresh.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            refresh.Click += delegate { RefreshDevices(); };
-            Controls.Add(refresh);
-            toolTip.SetToolTip(refresh, "刷新设备");
+            refreshButton = MakeIconButton(UiIcon.Refresh, "刷新设备", UiButtonKind.Secondary);
+            refreshButton.Location = new Point(552, 18);
+            refreshButton.Size = new Size(40, 40);
+            refreshButton.CornerRadius = 20;
+            refreshButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            refreshButton.Click += delegate { RefreshDevices(); };
+            Controls.Add(refreshButton);
+            toolTip.SetToolTip(refreshButton, "刷新设备");
 
-            List<DeviceDefinition> definitions = LoadDeviceDefinitions();
-            device1 = CreateDevice(definitions[0]);
-            device2 = CreateDevice(definitions[1]);
-            activeDevice = LoadSelectedDeviceIndex() == 1 ? device2 : device1;
+            emptyDevice = CreateEmptyDevice();
+            LoadSavedDevices();
+            activeDevice = FindSavedDevice(LoadSelectedDeviceSerial()) ??
+                FirstSavedDevice() ?? emptyDevice;
 
             RoundedPanel devicePanel = new RoundedPanel();
             devicePanel.Name = "activeDevicePanel";
@@ -1751,25 +1843,11 @@ namespace OMirror
             Controls.Add(info);
 
             devicePicker = new DevicePickerForm();
-            devicePicker.Size = new Size(532, 128);
+            devicePicker.Size = new Size(532, 72);
+            devicePicker.AutoScroll = true;
             pickerDismissFilter = new PickerDismissFilter(this);
             Application.AddMessageFilter(pickerDismissFilter);
-
-            device1Row = new DeviceSelectRow();
-            device1Row.Device = device1;
-            device1Row.Selected = activeDevice == device1;
-            device1Row.Location = new Point(8, 7);
-            device1Row.Size = new Size(516, 55);
-            device1Row.DeviceChosen += delegate { SelectDevice(device1); };
-            devicePicker.Controls.Add(device1Row);
-
-            device2Row = new DeviceSelectRow();
-            device2Row.Device = device2;
-            device2Row.Selected = activeDevice == device2;
-            device2Row.Location = new Point(8, 66);
-            device2Row.Size = new Size(516, 55);
-            device2Row.DeviceChosen += delegate { SelectDevice(device2); };
-            devicePicker.Controls.Add(device2Row);
+            RebuildDevicePicker();
 
             footerStatus = new Label();
             footerStatus.Text = "正在检查设备…";
@@ -1780,7 +1858,7 @@ namespace OMirror
             Controls.Add(footerStatus);
 
             Label version = new Label();
-            version.Text = "v1.14.0";
+            version.Text = "v1.15.0";
             version.ForeColor = muted;
             version.AutoSize = false;
             version.Location = new Point(512, 488);
@@ -1791,7 +1869,7 @@ namespace OMirror
 
             refreshTimer = new Timer();
             refreshTimer.Interval = 2500;
-            refreshTimer.Tick += delegate { RefreshDevices(); };
+            refreshTimer.Tick += delegate { RefreshDevices(false); };
 
             restartTimer = new Timer();
             restartTimer.Interval = 700;
@@ -1800,8 +1878,8 @@ namespace OMirror
             keyboardCapture = new KeyboardCapture(this);
             FormClosed += delegate
             {
-                StopScreenControl(device1, true);
-                StopScreenControl(device2, true);
+                foreach (DeviceCard device in DevicesSnapshot())
+                    StopScreenControl(device, true);
                 UiTheme.ThemeChanged -= ApplyTheme;
                 Microsoft.Win32.SystemEvents.UserPreferenceChanged -= SystemThemeChanged;
                 devicePicker.Close();
@@ -1827,7 +1905,7 @@ namespace OMirror
                 }
                 else if (devicePicker.Visible && (e.KeyCode == Keys.Up || e.KeyCode == Keys.Down))
                 {
-                    SelectDevice(activeDevice == device1 ? device2 : device1);
+                    CycleSavedDevice(e.KeyCode == Keys.Down ? 1 : -1);
                     e.Handled = true;
                     e.SuppressKeyPress = true;
                 }
@@ -1836,92 +1914,141 @@ namespace OMirror
             Microsoft.Win32.SystemEvents.UserPreferenceChanged += SystemThemeChanged;
         }
 
-        internal bool HasConfiguredDevices
+        internal bool IsRuntimeReady
         {
-            get
-            {
-                return !string.IsNullOrWhiteSpace(device1.Serial) &&
-                    !string.IsNullOrWhiteSpace(device2.Serial) &&
-                    File.Exists(adbPath) &&
-                    File.Exists(scrcpyPath);
-            }
+            get { return File.Exists(adbPath) && File.Exists(scrcpyPath); }
         }
 
-        private List<DeviceDefinition> LoadDeviceDefinitions()
+        private void LoadSavedDevices()
         {
-            List<DeviceDefinition> definitions = new List<DeviceDefinition>();
-            string path = Path.Combine(appDirectory, "devices.local.txt");
-
             try
             {
-                if (File.Exists(path))
+                foreach (SavedDeviceRecord record in DeviceRegistry.Load(deviceStorePath))
                 {
-                    foreach (string rawLine in File.ReadAllLines(path, Encoding.UTF8))
-                    {
-                        string line = rawLine.Trim();
-                        if (line.Length == 0 || line.StartsWith("#", StringComparison.Ordinal))
-                            continue;
-
-                        string[] parts = line.Split('|');
-                        int windowX;
-                        if (parts.Length != 4 ||
-                            parts[0].Trim().Length == 0 ||
-                            parts[2].Trim().Length == 0 ||
-                            !int.TryParse(parts[3].Trim(), out windowX))
-                            continue;
-
-                        definitions.Add(new DeviceDefinition
-                        {
-                            Name = parts[0].Trim(),
-                            Model = parts[1].Trim(),
-                            Serial = parts[2].Trim(),
-                            WindowX = windowX
-                        });
-                        if (definitions.Count == 2)
-                            break;
-                    }
+                    DeviceCard device = CreateDevice(record);
+                    devices.Add(device);
+                    devicesBySerial[device.Serial] = device;
                 }
             }
             catch
             {
-                definitions.Clear();
+                devices.Clear();
+                devicesBySerial.Clear();
             }
-
-            while (definitions.Count < 2)
-            {
-                int index = definitions.Count + 1;
-                definitions.Add(new DeviceDefinition
-                {
-                    Name = "未配置设备 " + index,
-                    Model = "请配置 devices.local.txt",
-                    Serial = string.Empty,
-                    WindowX = index == 1 ? 80 : 560
-                });
-            }
-
-            return definitions;
         }
 
-        private DeviceCard CreateDevice(DeviceDefinition definition)
+        private DeviceCard CreateEmptyDevice()
+        {
+            return new DeviceCard
+            {
+                Name = "未选择设备",
+                Model = "连接手机后点击刷新",
+                Serial = string.Empty,
+                IsPlaceholder = true,
+                AdbState = DeviceAdbState.Disconnected,
+                WindowX = 80,
+                LastWindowX = 80,
+                LastWindowY = 80
+            };
+        }
+
+        private DeviceCard CreateDevice(SavedDeviceRecord record)
         {
             DeviceCard device = new DeviceCard();
-            device.Name = definition.Name;
-            device.Model = definition.Model;
-            device.Serial = definition.Serial;
-            device.WindowX = definition.WindowX;
-            device.LastWindowX = definition.WindowX;
-            device.LastWindowY = 80;
+            device.Name = record.Name;
+            device.Model = record.Model;
+            device.Serial = record.Serial;
+            device.AndroidVersion = record.AndroidVersion;
+            device.IsSaved = true;
+            device.AdbState = DeviceAdbState.Disconnected;
+            device.WindowX = record.WindowX;
+            device.LastWindowX = record.WindowX;
+            device.LastWindowY = record.WindowY;
             return device;
+        }
+
+        private DeviceCard FindSavedDevice(string serial)
+        {
+            DeviceCard device;
+            if (string.IsNullOrWhiteSpace(serial) ||
+                !devicesBySerial.TryGetValue(serial, out device) || !device.IsSaved)
+                return null;
+            return device;
+        }
+
+        private DeviceCard FirstSavedDevice()
+        {
+            foreach (DeviceCard device in devices)
+            {
+                if (device.IsSaved)
+                    return device;
+            }
+            return null;
+        }
+
+        private DeviceCard[] DevicesSnapshot()
+        {
+            return devices.ToArray();
+        }
+
+        private List<DeviceCard> SavedDevices()
+        {
+            List<DeviceCard> result = new List<DeviceCard>();
+            foreach (DeviceCard device in devices)
+            {
+                if (device.IsSaved)
+                    result.Add(device);
+            }
+            return result;
+        }
+
+        private void PersistSavedDevices()
+        {
+            List<SavedDeviceRecord> records = new List<SavedDeviceRecord>();
+            foreach (DeviceCard device in devices)
+            {
+                if (!device.IsSaved)
+                    continue;
+                records.Add(new SavedDeviceRecord
+                {
+                    Serial = device.Serial,
+                    Name = device.Name,
+                    Model = device.Model,
+                    AndroidVersion = device.AndroidVersion,
+                    WindowX = device.LastWindowX,
+                    WindowY = device.LastWindowY
+                });
+            }
+            try
+            {
+                DeviceRegistry.Save(deviceStorePath, records);
+            }
+            catch
+            {
+                if (footerStatus != null)
+                    footerStatus.Text = "设备记录保存失败；本次连接仍可使用";
+            }
         }
 
         internal bool StressScreenOffSetting { get { return screenOffToggle.Checked; } }
         internal bool StressTopMostSetting { get { return alwaysOnTopToggle.Checked; } }
         internal int StressKeyboardSetting { get { return keyboardMode; } }
-        internal int StressActiveDeviceIndex { get { return activeDevice == device2 ? 1 : 0; } }
+        internal int StressActiveDeviceIndex
+        {
+            get
+            {
+                List<DeviceCard> saved = SavedDevices();
+                int index = saved.IndexOf(activeDevice);
+                return index < 0 ? 0 : index;
+            }
+        }
 
         internal bool StressPrepare(int deviceIndex)
         {
-            DeviceCard requested = deviceIndex == 1 ? device2 : device1;
+            List<DeviceCard> saved = SavedDevices();
+            if (deviceIndex < 0 || deviceIndex >= saved.Count)
+                return false;
+            DeviceCard requested = saved[deviceIndex];
             SelectDevice(requested);
             RefreshDevices();
             bool online = false;
@@ -1932,23 +2059,28 @@ namespace OMirror
                     System.Threading.Thread.Sleep(500);
             }
             requested.IsOnline = online;
-            Diagnostics.Trace("stress", "prepare", "configured=" + HasConfiguredDevices + " online=" + online + " detail=" + lastAdbProbeDetail);
+            Diagnostics.Trace("stress", "prepare", "saved=" + saved.Count + " online=" + online + " detail=" + lastAdbProbeDetail);
             return online;
         }
 
         internal bool StressMirrorIsRunning()
         {
+            if (activeDevice == null || activeDevice.IsPlaceholder)
+                return false;
             return activeDevice.MirrorActive || FindMirrorProcesses(activeDevice).Count > 0;
         }
 
         internal int StressMirrorProcessCount()
         {
+            if (activeDevice == null || activeDevice.IsPlaceholder)
+                return 0;
             return FindMirrorProcesses(activeDevice).Count;
         }
 
         internal void StressStartOrStopMirror()
         {
-            ToggleMirror(activeDevice);
+            if (activeDevice != null && !activeDevice.IsPlaceholder)
+                ToggleMirror(activeDevice);
         }
 
         internal void StressToggleScreenPower()
@@ -1982,6 +2114,8 @@ namespace OMirror
         internal void StressNavigatePhone(int keyCode)
         {
             DeviceCard target = activeDevice;
+            if (target == null || target.IsPlaceholder)
+                return;
             System.Threading.ThreadPool.QueueUserWorkItem(delegate
             {
                 new AdbClient(adbPath, target.Serial).Shell("input keyevent " + keyCode, 5000);
@@ -1994,7 +2128,9 @@ namespace OMirror
             alwaysOnTopToggle.Checked = topMost;
             if (keyboardModeSelector.SelectedIndex != keyboard)
                 keyboardModeSelector.SelectedIndex = keyboard;
-            SelectDevice(deviceIndex == 1 ? device2 : device1);
+            List<DeviceCard> saved = SavedDevices();
+            if (deviceIndex >= 0 && deviceIndex < saved.Count)
+                SelectDevice(saved[deviceIndex]);
         }
 
         private ModernButton MakeIconButton(UiIcon icon, string accessibleName, UiButtonKind kind)
@@ -2030,9 +2166,8 @@ namespace OMirror
                 CloseDeviceList();
                 return;
             }
-            activeDeviceRow.AccessibleDescription = activeDevice.Model + "，" +
-                (activeDevice.IsOnline ? "USB 已连接" : "未连接") + "，" +
-                "设备列表已展开";
+            RebuildDevicePicker();
+            activeDeviceRow.AccessibleDescription = activeDevice.Model + "，设备列表已展开";
             devicePicker.ShowFor(activeDeviceRow, this);
         }
 
@@ -2041,23 +2176,236 @@ namespace OMirror
             if (!devicePicker.Visible)
                 return;
             devicePicker.Hide();
-            activeDeviceRow.AccessibleDescription = activeDevice.Model + "，" +
-                (activeDevice.IsOnline ? "USB 已连接" : "未连接") + "，设备列表已折叠";
+            activeDeviceRow.AccessibleDescription = activeDevice.Model + "，设备列表已折叠";
         }
 
         private void SelectDevice(DeviceCard device)
         {
+            if (device == null || !device.IsSaved)
+                return;
             activeDevice = device;
             activeDeviceRow.Device = device;
-            device1Row.Selected = device == device1;
-            device2Row.Selected = device == device2;
-            device1Row.Invalidate();
-            device2Row.Invalidate();
+            foreach (DeviceSelectRow row in deviceRows)
+            {
+                row.Selected = row.Device == device;
+                row.Invalidate();
+            }
             UpdateMirrorAction(device);
             transferButton.Enabled = device.IsOnline;
-            SaveSelectedDeviceIndex(device == device2 ? 1 : 0);
+            SaveSelectedDeviceSerial(device.Serial);
             devicePicker.Hide();
             footerStatus.Text = DeviceStatusText(device);
+            activeDeviceRow.Focus();
+        }
+
+        private void RebuildDevicePicker()
+        {
+            List<DeviceCard> ordered = OrderedDevices();
+            bool sameRows = ordered.Count == deviceRows.Count;
+            if (sameRows)
+            {
+                for (int i = 0; i < ordered.Count; i++)
+                {
+                    if (deviceRows[i].Device != ordered[i])
+                    {
+                        sameRows = false;
+                        break;
+                    }
+                }
+            }
+            if (sameRows && (ordered.Count > 0 || devicePicker.Controls.Count > 0))
+            {
+                foreach (DeviceSelectRow row in deviceRows)
+                {
+                    row.Selected = row.Device == activeDevice;
+                    row.UpdateStatus();
+                    toolTip.SetToolTip(row, row.Device.IsSaved
+                        ? "选择设备；更多菜单可删除记录"
+                        : row.Device.IsOnline ? "连接并启动投屏" : "设备暂不可连接");
+                }
+                return;
+            }
+
+            bool wasVisible = devicePicker.Visible;
+            if (wasVisible)
+                devicePicker.Hide();
+            devicePicker.SuspendLayout();
+            deviceRows.Clear();
+            while (devicePicker.Controls.Count > 0)
+            {
+                Control oldControl = devicePicker.Controls[0];
+                devicePicker.Controls.RemoveAt(0);
+                oldControl.Dispose();
+            }
+
+            if (ordered.Count == 0)
+            {
+                Label empty = new Label();
+                empty.Text = "未发现设备\r\n连接手机并允许 USB 调试后点击刷新";
+                empty.ForeColor = UiTheme.TextMuted;
+                empty.Font = new Font(UiTheme.FontFamily, 9F, FontStyle.Regular);
+                empty.TextAlign = ContentAlignment.MiddleCenter;
+                empty.Location = new Point(12, 8);
+                empty.Size = new Size(508, 52);
+                devicePicker.Controls.Add(empty);
+                devicePicker.ClientSize = new Size(532, 68);
+                devicePicker.AutoScrollMinSize = Size.Empty;
+            }
+            else
+            {
+                for (int i = 0; i < ordered.Count; i++)
+                {
+                    DeviceCard target = ordered[i];
+                    DeviceSelectRow row = new DeviceSelectRow();
+                    row.Device = target;
+                    row.Selected = target == activeDevice;
+                    row.Location = new Point(8, 7 + i * 59);
+                    row.Size = new Size(500, 55);
+                    row.DeviceChosen += delegate { SelectDevice(target); };
+                    row.ConnectRequested += delegate { ConnectDevice(target); };
+                    row.MoreRequested += delegate { ShowDeviceMenu(row, target); };
+                    toolTip.SetToolTip(row, target.IsSaved
+                        ? "选择设备；更多菜单可删除记录"
+                        : target.IsOnline ? "连接并启动投屏" : "设备暂不可连接");
+                    deviceRows.Add(row);
+                    devicePicker.Controls.Add(row);
+                }
+                int visibleRows = Math.Min(4, ordered.Count);
+                devicePicker.ClientSize = new Size(532, 14 + visibleRows * 59);
+                devicePicker.AutoScrollMinSize = new Size(0, 14 + ordered.Count * 59);
+            }
+            devicePicker.ResumeLayout(true);
+            if (wasVisible)
+                devicePicker.ShowFor(activeDeviceRow, this);
+        }
+
+        private List<DeviceCard> OrderedDevices()
+        {
+            List<DeviceCard> result = new List<DeviceCard>();
+            if (activeDevice != null && !activeDevice.IsPlaceholder && activeDevice.IsSaved)
+                result.Add(activeDevice);
+            foreach (DeviceCard device in devices)
+            {
+                if (device != activeDevice && device.IsSaved && device.IsOnline)
+                    result.Add(device);
+            }
+            foreach (DeviceCard device in devices)
+            {
+                if (device != activeDevice && device.IsSaved && !device.IsOnline)
+                    result.Add(device);
+            }
+            foreach (DeviceCard device in devices)
+            {
+                if (!device.IsSaved && device.IsOnline)
+                    result.Add(device);
+            }
+            foreach (DeviceCard device in devices)
+            {
+                if (!device.IsSaved && !device.IsOnline)
+                    result.Add(device);
+            }
+            return result;
+        }
+
+        private void CycleSavedDevice(int direction)
+        {
+            List<DeviceCard> saved = SavedDevices();
+            if (saved.Count == 0)
+                return;
+            int current = saved.IndexOf(activeDevice);
+            if (current < 0)
+                current = 0;
+            else
+                current = (current + direction + saved.Count) % saved.Count;
+            SelectDevice(saved[current]);
+        }
+
+        private void ConnectDevice(DeviceCard device)
+        {
+            if (device == null || device.IsSaved || !device.IsOnline)
+                return;
+            device.IsSaved = true;
+            if (device.LastWindowX == 0)
+                device.LastWindowX = 80 + (SavedDevices().Count - 1) * 40;
+            PersistSavedDevices();
+            RebuildDevicePicker();
+            SelectDevice(device);
+            LaunchDevice(device);
+        }
+
+        private void ShowDeviceMenu(DeviceSelectRow row, DeviceCard device)
+        {
+            if (device == null || !device.IsSaved)
+                return;
+            ContextMenuStrip menu = new ContextMenuStrip();
+            menu.ShowImageMargin = false;
+            menu.BackColor = UiTheme.Surface;
+            menu.ForeColor = UiTheme.Text;
+            ToolStripMenuItem delete = new ToolStripMenuItem("删除此设备");
+            delete.ForeColor = UiTheme.Danger;
+            delete.Click += delegate { DeleteSavedDevice(device); };
+            menu.Items.Add(delete);
+            menu.Closed += delegate { menu.Dispose(); };
+            menu.Show(row, new Point(row.Width - 142, row.Height - 2));
+        }
+
+        private void DeleteSavedDevice(DeviceCard device)
+        {
+            if (device == null || !device.IsSaved)
+                return;
+            DialogResult confirmation = MessageBox.Show(
+                "从 OMirror 中删除“" + device.Name + "”？\n\n" +
+                "只会清除这台电脑上的设备记录，不会删除手机中的数据。",
+                "删除设备",
+                MessageBoxButtons.OKCancel,
+                MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2);
+            if (confirmation != DialogResult.OK)
+                return;
+
+            // Invalidate every delayed lifecycle callback before stopping/removing
+            // the record, and ensure a queued hot restart cannot relaunch it.
+            device.StopRequested = true;
+            device.SessionGeneration++;
+            device.RecoveryRequestId++;
+            device.ScreenPowerRequestId++;
+            device.TopMostRequestId++;
+            pendingRestart.Remove(device);
+            pendingWakeBeforeRestart.Remove(device);
+            List<Process> running = FindMirrorProcesses(device);
+            if (running.Count > 0)
+            {
+                device.SessionState = MirrorSessionState.Stopping;
+                StopScreenControl(device, true);
+                StopMirrorProcesses(running, true);
+            }
+            device.MirrorProcess = null;
+            device.MirrorProcessId = 0;
+            device.MirrorActive = false;
+            device.MirrorStarting = false;
+            device.MirrorStopping = false;
+            device.SessionState = MirrorSessionState.Stopped;
+            device.StopRequested = false;
+            device.IsSaved = false;
+            try { File.Delete(DeviceModePath(device.Serial)); }
+            catch { }
+
+            if (!device.IsDiscovered)
+            {
+                devices.Remove(device);
+                devicesBySerial.Remove(device.Serial);
+            }
+            if (activeDevice == device)
+                activeDevice = FirstSavedDevice() ?? emptyDevice;
+            activeDeviceRow.Device = activeDevice;
+            SaveSelectedDeviceSerial(activeDevice.IsPlaceholder ? string.Empty : activeDevice.Serial);
+            PersistSavedDevices();
+            RebuildDevicePicker();
+            UpdateMirrorAction(activeDevice);
+            transferButton.Enabled = activeDevice.IsOnline && activeDevice.IsSaved;
+            footerStatus.Text = device.IsDiscovered
+                ? "已删除设备记录；手机仍连接，可作为新设备重新添加"
+                : "已删除设备记录";
             activeDeviceRow.Focus();
         }
 
@@ -2101,24 +2449,24 @@ namespace OMirror
             }
         }
 
-        private int LoadSelectedDeviceIndex()
+        private string LoadSelectedDeviceSerial()
         {
             try
             {
-                return File.ReadAllText(selectedDeviceSettingsPath).Trim() == "1" ? 1 : 0;
+                return File.ReadAllText(selectedDeviceSettingsPath, Encoding.UTF8).Trim();
             }
             catch
             {
-                return 0;
+                return string.Empty;
             }
         }
 
-        private void SaveSelectedDeviceIndex(int index)
+        private void SaveSelectedDeviceSerial(string serial)
         {
             try
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(selectedDeviceSettingsPath));
-                File.WriteAllText(selectedDeviceSettingsPath, index == 1 ? "1" : "0", Encoding.UTF8);
+                File.WriteAllText(selectedDeviceSettingsPath, serial ?? string.Empty, Encoding.UTF8);
             }
             catch
             {
@@ -2190,21 +2538,29 @@ namespace OMirror
 
         private void RefreshDevices()
         {
+            RefreshDevices(true);
+        }
+
+        private void RefreshDevices(bool announceProgress)
+        {
             if (!File.Exists(adbPath) || !File.Exists(scrcpyPath))
             {
                 footerStatus.Text = "安装不完整：缺少 scrcpy 或 ADB";
-                SetDeviceState(device1, false);
-                SetDeviceState(device2, false);
+                foreach (DeviceCard device in devices)
+                    SetDeviceState(device, false);
                 return;
             }
 
             if (System.Threading.Interlocked.CompareExchange(ref refreshInProgress, 1, 0) != 0)
                 return;
+            refreshButton.Enabled = false;
+            refreshButton.AccessibleDescription = "正在扫描 USB 设备";
+            if (announceProgress)
+                footerStatus.Text = "正在扫描 USB 设备…";
 
             System.Threading.ThreadPool.QueueUserWorkItem(delegate
             {
-                bool device1Online = IsUsbDeviceOnline(device1.Serial);
-                bool device2Online = IsUsbDeviceOnline(device2.Serial);
+                DeviceDiscoveryResult result = DeviceRegistry.DiscoverUsb(adbPath, 10000);
 
                 if (IsDisposed)
                 {
@@ -2216,14 +2572,15 @@ namespace OMirror
                 {
                     BeginInvoke((MethodInvoker)delegate
                     {
-                        SetDeviceState(device1, device1Online);
-                        SetDeviceState(device2, device2Online);
-
-                        int connectedCount = (device1Online ? 1 : 0) + (device2Online ? 1 : 0);
-                        if (connectedCount == 0)
-                            footerStatus.Text = "未发现已授权的目标 USB 设备";
+                        ApplyDiscoveryResult(result);
+                        refreshButton.Enabled = true;
+                        refreshButton.AccessibleDescription = "刷新 USB 设备";
+                        if (!result.Success)
+                            footerStatus.Text = "设备扫描失败：" + result.Error;
+                        else if (result.Devices.Count == 0)
+                            footerStatus.Text = "未发现 USB 调试设备";
                         else
-                            footerStatus.Text = string.Format("已连接 {0} 台目标设备", connectedCount);
+                            footerStatus.Text = string.Format("已发现 {0} 台 USB 设备", result.Devices.Count);
 
                         System.Threading.Interlocked.Exchange(ref refreshInProgress, 0);
                     });
@@ -2235,6 +2592,80 @@ namespace OMirror
             });
         }
 
+        private void ApplyDiscoveryResult(DeviceDiscoveryResult result)
+        {
+            if (!result.Success)
+                return;
+
+            foreach (DeviceCard device in devices)
+            {
+                device.IsDiscovered = false;
+                device.IsOnline = false;
+                device.AdbState = DeviceAdbState.Disconnected;
+            }
+
+            HashSet<string> seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            bool savedMetadataChanged = false;
+            foreach (DiscoveredDevice discovered in result.Devices)
+            {
+                seen.Add(discovered.Serial);
+                DeviceCard device;
+                if (!devicesBySerial.TryGetValue(discovered.Serial, out device))
+                {
+                    device = new DeviceCard
+                    {
+                        Serial = discovered.Serial,
+                        Name = discovered.Name,
+                        Model = discovered.Model,
+                        AndroidVersion = discovered.AndroidVersion,
+                        IsSaved = false,
+                        WindowX = 80 + devices.Count * 40,
+                        LastWindowX = 80 + devices.Count * 40,
+                        LastWindowY = 80
+                    };
+                    devices.Add(device);
+                    devicesBySerial[device.Serial] = device;
+                }
+                device.IsDiscovered = true;
+                device.AdbState = discovered.State;
+                device.IsOnline = discovered.State == DeviceAdbState.Online;
+                if (!string.IsNullOrWhiteSpace(discovered.Name) && device.Name != discovered.Name)
+                {
+                    device.Name = discovered.Name;
+                    savedMetadataChanged = savedMetadataChanged || device.IsSaved;
+                }
+                if (!string.IsNullOrWhiteSpace(discovered.Model) && device.Model != discovered.Model)
+                {
+                    device.Model = discovered.Model;
+                    savedMetadataChanged = savedMetadataChanged || device.IsSaved;
+                }
+                if (!string.IsNullOrWhiteSpace(discovered.AndroidVersion) &&
+                    device.AndroidVersion != discovered.AndroidVersion)
+                {
+                    device.AndroidVersion = discovered.AndroidVersion;
+                    savedMetadataChanged = savedMetadataChanged || device.IsSaved;
+                }
+            }
+
+            for (int i = devices.Count - 1; i >= 0; i--)
+            {
+                DeviceCard device = devices[i];
+                if (!device.IsSaved && !seen.Contains(device.Serial))
+                {
+                    devices.RemoveAt(i);
+                    devicesBySerial.Remove(device.Serial);
+                }
+            }
+            if (savedMetadataChanged)
+                PersistSavedDevices();
+            if (activeDevice == null || (!activeDevice.IsSaved && !activeDevice.IsPlaceholder))
+                activeDevice = FirstSavedDevice() ?? emptyDevice;
+            activeDeviceRow.Device = activeDevice;
+            UpdateMirrorAction(activeDevice);
+            transferButton.Enabled = activeDevice.IsSaved && activeDevice.IsOnline;
+            RebuildDevicePicker();
+        }
+
         private bool IsUsbDeviceOnline(string serial)
         {
             if (string.IsNullOrWhiteSpace(serial))
@@ -2242,26 +2673,10 @@ namespace OMirror
 
             try
             {
-                ProcessStartInfo psi = new ProcessStartInfo();
-                psi.FileName = adbPath;
-                psi.Arguments = "-s " + serial + " get-state";
-                psi.UseShellExecute = false;
-                psi.CreateNoWindow = true;
-                psi.RedirectStandardOutput = true;
-                psi.RedirectStandardError = true;
-                Process p = Process.Start(psi);
-                // The first query after an ADB-server restart can take longer than a
-                // normal refresh. Do not classify an otherwise connected phone as
-                // absent just because its server is warming up.
-                if (!p.WaitForExit(5000))
-                {
-                    p.Kill();
-                    return false;
-                }
-                string output = p.StandardOutput.ReadToEnd().Trim();
-                string error = p.StandardError.ReadToEnd().Trim();
-                lastAdbProbeDetail = "exit=" + p.ExitCode + " output=" + output + " error=" + error;
-                return p.ExitCode == 0 && output == "device";
+                AdbResult result = new AdbClient(adbPath, serial).RunDevice("get-state", 5000);
+                string output = (result.Output ?? string.Empty).Trim();
+                lastAdbProbeDetail = "exit=" + result.ExitCode + " state=" + output;
+                return result.Success && output == "device";
             }
             catch (Exception ex)
             {
@@ -2273,28 +2688,34 @@ namespace OMirror
         private void SetDeviceState(DeviceCard device, bool connected)
         {
             device.IsOnline = connected;
+            device.AdbState = connected ? DeviceAdbState.Online : DeviceAdbState.Disconnected;
             UpdateDeviceRows(device);
             if (device == activeDevice)
             {
                 UpdateMirrorAction(device);
-                transferButton.Enabled = connected;
+                transferButton.Enabled = connected && device.IsSaved;
             }
         }
 
         private string DeviceStatusText(DeviceCard device)
         {
+            if (device == null || device.IsPlaceholder) return "连接手机后点击刷新";
             if (device.MirrorStarting) return device.Name + " 正在启动投屏…";
             if (device.MirrorStopping) return device.Name + " 正在停止投屏…";
             if (device.MirrorActive) return device.Name + " 正在投屏";
+            if (!device.IsSaved && device.IsOnline) return device.Name + " 是新设备，可以连接";
+            if (device.AdbState == DeviceAdbState.Unauthorized) return device.Name + " 等待 USB 调试授权";
+            if (device.AdbState == DeviceAdbState.Offline) return device.Name + " ADB 离线";
             return device.Name + (device.IsOnline ? " 已就绪" : " 未连接");
         }
 
         private void UpdateDeviceRows(DeviceCard device)
         {
-            if (device == device1)
-                device1Row.UpdateStatus();
-            else if (device == device2)
-                device2Row.UpdateStatus();
+            foreach (DeviceSelectRow row in deviceRows)
+            {
+                if (row.Device == device)
+                    row.UpdateStatus();
+            }
             if (device == activeDevice)
                 activeDeviceRow.UpdateStatus();
         }
@@ -2303,6 +2724,20 @@ namespace OMirror
         {
             if (device != activeDevice)
                 return;
+
+            if (device == null || device.IsPlaceholder || !device.IsSaved)
+            {
+                launchButton.Text = "投屏";
+                launchButton.Icon = UiIcon.Mirror;
+                launchButton.Kind = UiButtonKind.Primary;
+                launchButton.Enabled = false;
+                launchButton.AnimateIcon = false;
+                launchButton.AccessibleName = "请先连接设备";
+                launchButton.BackColor = UiTheme.Accent;
+                launchButton.ForeColor = Color.White;
+                launchButton.Invalidate();
+                return;
+            }
 
             if (device.MirrorStarting)
             {
@@ -2336,7 +2771,7 @@ namespace OMirror
                 launchButton.Text = "投屏";
                 launchButton.Icon = UiIcon.Mirror;
                 launchButton.Kind = UiButtonKind.Primary;
-                launchButton.Enabled = device.IsOnline;
+                launchButton.Enabled = device.IsOnline && device.IsSaved;
                 launchButton.AnimateIcon = false;
                 launchButton.AccessibleName = "启动有线投屏";
             }
@@ -2348,6 +2783,8 @@ namespace OMirror
 
         private void ToggleMirror(DeviceCard device)
         {
+            if (device == null || device.IsPlaceholder || !device.IsSaved)
+                return;
             if (device.MirrorStarting || device.MirrorStopping)
                 return;
 
@@ -2541,7 +2978,7 @@ namespace OMirror
 
         private void ScheduleRecovery(DeviceCard device, int exitedGeneration, int exitCode)
         {
-            if (device.RecoveryAttempts >= 2)
+            if (!device.IsSaved || device.RecoveryAttempts >= 2)
             {
                 device.SessionState = MirrorSessionState.Stopped;
                 device.StopRequested = false;
@@ -2572,7 +3009,8 @@ namespace OMirror
                     BeginInvoke((MethodInvoker)delegate
                     {
                         if (device.RecoveryRequestId != requestId ||
-                            device.SessionGeneration != exitedGeneration || device.StopRequested)
+                            device.SessionGeneration != exitedGeneration || device.StopRequested ||
+                            !device.IsSaved)
                             return;
                         if (!IsUsbDeviceOnline(device.Serial))
                         {
@@ -2589,10 +3027,11 @@ namespace OMirror
 
         private void AdoptExistingMirrorsAsync()
         {
+            DeviceCard[] snapshot = SavedDevices().ToArray();
             System.Threading.ThreadPool.QueueUserWorkItem(delegate
             {
-                AdoptExistingMirror(device1);
-                AdoptExistingMirror(device2);
+                foreach (DeviceCard device in snapshot)
+                    AdoptExistingMirror(device);
             });
         }
 
@@ -2619,6 +3058,8 @@ namespace OMirror
 
         private void LaunchDevice(DeviceCard device)
         {
+            if (device == null || device.IsPlaceholder || !device.IsSaved)
+                return;
             if (!IsUsbDeviceOnline(device.Serial))
             {
                 MessageBox.Show(
@@ -2747,14 +3188,15 @@ namespace OMirror
             SaveScreenOffSetting();
             if (screenOffToggle.Checked)
             {
-                ApplyScreenSettingToRunning(device1, true);
-                ApplyScreenSettingToRunning(device2, true);
+                foreach (DeviceCard device in SavedDevices())
+                    ApplyScreenSettingToRunning(device, true);
                 footerStatus.Text = "已开启“仅熄手机屏幕”；正在运行的投屏将热生效";
             }
             else
             {
-                bool restartNeeded = QueueScreenWakeRestart(device1);
-                restartNeeded = QueueScreenWakeRestart(device2) || restartNeeded;
+                bool restartNeeded = false;
+                foreach (DeviceCard device in SavedDevices())
+                    restartNeeded = QueueScreenWakeRestart(device) || restartNeeded;
                 if (restartNeeded)
                 {
                     restartTimer.Stop();
@@ -2833,8 +3275,8 @@ namespace OMirror
         private void AlwaysOnTopSettingChanged(object sender, EventArgs e)
         {
             SaveAlwaysOnTopSetting();
-            ApplyTopMostToRunning(device1);
-            ApplyTopMostToRunning(device2);
+            foreach (DeviceCard device in DevicesSnapshot())
+                ApplyTopMostToRunning(device);
             footerStatus.Text = alwaysOnTopToggle.Checked
                 ? "已让正在运行的投屏保持在最顶层"
                 : "已允许其他窗口覆盖正在运行的投屏";
@@ -2930,6 +3372,8 @@ namespace OMirror
         private void CenterActiveMirrorWindow()
         {
             DeviceCard device = activeDevice;
+            if (device == null || device.IsPlaceholder)
+                return;
             List<Process> running = FindMirrorProcesses(device);
             if (running.Count == 0)
                 return;
@@ -2958,6 +3402,8 @@ namespace OMirror
 
                 device.LastWindowX = x;
                 device.LastWindowY = y;
+                if (device.IsSaved)
+                    PersistSavedDevices();
                 Diagnostics.Trace(device.Name, "window-centered", "x=" + x + " y=" + y);
             }
             catch
@@ -3230,6 +3676,8 @@ namespace OMirror
 
         private void OpenTransfer(DeviceCard device)
         {
+            if (device == null || device.IsPlaceholder || !device.IsSaved)
+                return;
             if (!IsUsbDeviceOnline(device.Serial))
             {
                 MessageBox.Show(
@@ -3253,10 +3701,11 @@ namespace OMirror
 
             uint processId;
             GetWindowThreadProcessId(foregroundWindow, out processId);
-            if (processId == device1.MirrorProcessId)
-                return device1;
-            if (processId == device2.MirrorProcessId)
-                return device2;
+            foreach (DeviceCard device in DevicesSnapshot())
+            {
+                if (processId == device.MirrorProcessId)
+                    return device;
+            }
             return null;
         }
 
@@ -3282,8 +3731,8 @@ namespace OMirror
             keyboardMode = selected;
             SaveKeyboardMode();
 
-            QueueRestartIfRunning(device1);
-            QueueRestartIfRunning(device2);
+            foreach (DeviceCard device in DevicesSnapshot())
+                QueueRestartIfRunning(device);
 
             if (pendingRestart.Count == 0)
             {
@@ -3328,6 +3777,8 @@ namespace OMirror
                 {
                     device.LastWindowX = bounds.Left;
                     device.LastWindowY = bounds.Top;
+                    if (device.IsSaved)
+                        PersistSavedDevices();
                     Diagnostics.Trace(device.Name, "window-position-captured",
                         "x=" + bounds.Left + " y=" + bounds.Top);
                 }
@@ -3346,6 +3797,8 @@ namespace OMirror
             {
                 bool wakeBeforeLaunch = pendingWakeBeforeRestart.Remove(device);
                 StopMirrorProcesses(FindMirrorProcesses(device), true);
+                if (!device.IsSaved)
+                    continue;
                 if (!wakeBeforeLaunch)
                 {
                     if (IsUsbDeviceOnline(device.Serial))
@@ -3386,6 +3839,8 @@ namespace OMirror
         {
             List<Process> processes = new List<Process>();
             HashSet<int> processIds = new HashSet<int>();
+            if (device == null || string.IsNullOrWhiteSpace(device.Serial))
+                return processes;
 
             try
             {
@@ -3614,12 +4069,13 @@ namespace OMirror
 
             if (args.Length == 1 && args[0] == "--self-test")
             {
-                using (MainForm form = new MainForm())
-                {
-                    if (!MainForm.IsScreenPowerInputInteropValid)
-                        return 3;
-                    return form.HasConfiguredDevices ? 0 : 2;
-                }
+                if (!MainForm.IsScreenPowerInputInteropValid)
+                    return 3;
+                string directory = AppDomain.CurrentDomain.BaseDirectory;
+                string runtime = Path.Combine(directory, "scrcpy");
+                return DeviceRegistry.RunSelfTest(
+                    Path.Combine(runtime, "adb.exe"),
+                    Path.Combine(runtime, "scrcpy.exe")) ? 0 : 2;
             }
 
             Application.Run(new MainForm());
