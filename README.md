@@ -2,6 +2,12 @@
 
 OMirror 是一个 Windows 桌面工具，通过 USB ADB 和 scrcpy 投屏并控制 Android 手机，同时提供双向文件管理与针对手机输入法的键盘模式。
 
+## 下载与首次连接
+
+从 [GitHub Releases](https://github.com/LeonZ03/OMirror/releases/latest) 下载最新的 Windows 压缩包，完整解压后运行 `OMirror.exe`。手机开启开发者选项和 USB 调试并授权当前电脑后，点击刷新，在标记为“新设备”的条目上点击“连接”即可开始投屏。
+
+从旧版升级到 1.15.0 时不会导入原来的固定设备配置，需要按上述步骤重新添加手机；键盘、外观、熄屏和置顶等通用偏好仍会保留。
+
 ## 功能
 
 - 自动发现通过 USB ADB 连接的 Android 设备；可连接新手机、保留离线历史设备并删除本地设备记录。
@@ -68,3 +74,5 @@ $process.ExitCode
 ## 隐私
 
 设备记录和运行设置保存在 `%LOCALAPPDATA%\OMirror`，其中 `devices.json` 只存在于本机。仅在异常退出或压力测试失败时，会在 `%LOCALAPPDATA%\OMirror\Diagnostics` 留下最近五份脱敏日志。仓库忽略构建产物、设备标识、密钥文件和本机临时数据；提交前仍应检查暂存内容，避免上传凭据或个人文件。
+
+版本变化见 [CHANGELOG.md](CHANGELOG.md)。
