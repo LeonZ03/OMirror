@@ -94,7 +94,7 @@ Before committing:
 4. For transfer changes, validate both directions with a Unicode filename; for directory changes, include a nested Unicode folder and compare hashes.
 5. For Camera/listing changes, verify a large directory displays only the first batch and “更多” remains enabled.
 6. For lifecycle/input changes, run `OMirror.exe --stress-model <seed>` and, with only the target handset connected, `tests\Run-StabilityStress.ps1 -DeviceIndex 0 -DurationMinutes 10 -Seed <seed>`.
-7. For a release, package the complete `dist\OMirror` directory, calculate SHA-256, and publish the matching section from `CHANGELOG.md`; never commit the archive or bundled binaries.
+7. For a release, package the complete `dist\OMirror` directory, calculate SHA-256, and provide concise release notes directly to the user for the GitHub form; do not maintain a separate release-notes file or commit the archive/bundled binaries.
 
 ## Change constraints
 

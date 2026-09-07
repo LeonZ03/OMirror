@@ -74,5 +74,3 @@ $process.ExitCode
 ## 隐私
 
 设备记录和运行设置保存在 `%LOCALAPPDATA%\OMirror`，其中 `devices.json` 只存在于本机。仅在异常退出或压力测试失败时，会在 `%LOCALAPPDATA%\OMirror\Diagnostics` 留下最近五份脱敏日志。仓库忽略构建产物、设备标识、密钥文件和本机临时数据；提交前仍应检查暂存内容，避免上传凭据或个人文件。
-
-版本变化见 [CHANGELOG.md](CHANGELOG.md)。
