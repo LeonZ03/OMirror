@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
@@ -44,6 +44,7 @@ namespace OMirror
         private readonly AdbClient adb;
         private readonly Panel localPanel;
         private readonly Panel remotePanel;
+        private readonly RoundedPanel panesFrame;
         private readonly RoundedTextBox localPathBox;
         private readonly RoundedTextBox remotePathBox;
         private readonly DataGridView localGrid;
@@ -66,10 +67,19 @@ namespace OMirror
         private List<FileEntry> remoteEntries = new List<FileEntry>();
         private int remoteDisplayedCount;
         private bool activityExpanded;
+        private bool controlsReady;
+        private Label localSummary;
+        private Label remoteSummary;
         private const int RemoteBatchSize = 1000;
+
+        private int Scale(int value)
+        {
+            return UiTheme.Scale(this, value);
+        }
 
         public TransferForm(string deviceName, string serial, string adbPath)
         {
+            SuspendLayout();
             this.deviceName = deviceName;
             adb = new AdbClient(adbPath, serial);
             toolTip = new ToolTip();
@@ -82,58 +92,77 @@ namespace OMirror
                 : Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
 
             Text = "文件互传 · " + deviceName;
+            try
+            {
+                Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+            }
+            catch
+            {
+                // Keep the platform fallback if the executable icon cannot be read.
+            }
             StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(1120, 700);
-            MinimumSize = new Size(980, 600);
+            ClientSize = new Size(1080, 715);
+            MinimumSize = new Size(920, 620);
             BackColor = page;
             ForeColor = text;
             Font = new Font(UiTheme.FontFamily, 9F);
+            AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
 
             Label title = new Label();
             title.Text = "文件互传";
-            title.Font = new Font(UiTheme.FontFamily, 20F, FontStyle.Bold);
+            title.Font = new Font(UiTheme.FontFamily, 18F, FontStyle.Bold);
             title.ForeColor = text;
             title.BackColor = page;
             title.AutoSize = true;
-            title.Location = new Point(20, 18);
+            title.Location = new Point(24, 20);
             Controls.Add(title);
 
-            int badgeWidth = Math.Max(112, TextRenderer.MeasureText(deviceName, Font).Width + 50);
-            RoundedPanel deviceBadge = new RoundedPanel();
-            deviceBadge.Name = "deviceBadge";
-            deviceBadge.BackColor = UiTheme.SurfaceRaised;
-            deviceBadge.BorderColor = UiTheme.Border;
-            deviceBadge.CornerRadius = 15;
-            deviceBadge.Location = new Point(190, 21);
-            deviceBadge.Size = new Size(badgeWidth, 30);
-            Controls.Add(deviceBadge);
+            Label intro = new Label();
+            intro.Text = "在电脑与手机之间，自由传递。";
+            intro.Font = new Font(UiTheme.FontFamily, 9F);
+            intro.ForeColor = muted;
+            intro.AutoSize = true;
+            intro.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            intro.Location = new Point(ClientSize.Width - 232, 38);
+            Controls.Add(intro);
 
             StatusDot deviceDot = new StatusDot();
             deviceDot.DotColor = success;
-            deviceDot.Location = new Point(12, 10);
+            deviceDot.Location = new Point(28, 67);
             deviceDot.Size = new Size(10, 10);
-            deviceBadge.Controls.Add(deviceDot);
+            Controls.Add(deviceDot);
 
             Label deviceLabel = new Label();
-            deviceLabel.Text = "USB · " + deviceName;
-            deviceLabel.ForeColor = success;
+            deviceLabel.Text = "USB 已连接  ·  " + deviceName;
+            deviceLabel.ForeColor = muted;
             deviceLabel.AutoSize = true;
-            deviceLabel.Location = new Point(29, 6);
-            deviceBadge.Controls.Add(deviceLabel);
+            deviceLabel.Location = new Point(44, 61);
+            Controls.Add(deviceLabel);
 
             sendButton = MakeTransferButton("传到手机");
+            sendButton.Icon = UiIcon.ArrowRight;
             sendButton.Click += delegate { StartTransfer(true); };
-            Controls.Add(sendButton);
+
 
             receiveButton = MakeTransferButton("存到电脑");
+            receiveButton.Icon = UiIcon.ArrowLeft;
+            receiveButton.Kind = UiButtonKind.Secondary;
+            receiveButton.BackColor = UiTheme.SurfaceRaised;
+            receiveButton.ForeColor = text;
             receiveButton.Click += delegate { StartTransfer(false); };
-            Controls.Add(receiveButton);
+
 
             localPanel = MakePane();
             remotePanel = MakePane();
-            Controls.Add(localPanel);
-            Controls.Add(remotePanel);
+            panesFrame = new RoundedPanel();
+            panesFrame.BackColor = panelColor;
+            panesFrame.BorderColor = UiTheme.Border;
+            panesFrame.CornerRadius = 14;
+            panesFrame.Shadow = false;
+            Controls.Add(panesFrame);
+            panesFrame.Controls.Add(localPanel);
+            panesFrame.Controls.Add(remotePanel);
 
             localPathBox = MakePathBox();
             localPathBox.KeyDown += delegate(object sender, KeyEventArgs e)
@@ -161,19 +190,38 @@ namespace OMirror
 
             BuildLocalPane();
             BuildRemotePane();
+            localPanel.Controls.Add(sendButton);
+            remotePanel.Controls.Add(receiveButton);
+            localSummary = MakeSummary();
+            remoteSummary = MakeSummary();
+            localPanel.Controls.Add(localSummary);
+            remotePanel.Controls.Add(remoteSummary);
+            localGrid.RowsAdded += delegate { UpdatePaneSummaries(); };
+            localGrid.RowsRemoved += delegate { UpdatePaneSummaries(); };
+            remoteGrid.RowsAdded += delegate { UpdatePaneSummaries(); };
+            remoteGrid.RowsRemoved += delegate { UpdatePaneSummaries(); };
+            localGrid.SelectionChanged += delegate { UpdatePaneSummaries(); };
+            remoteGrid.SelectionChanged += delegate { UpdatePaneSummaries(); };
+            panesFrame.Paint += delegate(object sender, PaintEventArgs e)
+            {
+                using (Pen pen = new Pen(UiTheme.Border))
+                    e.Graphics.DrawLine(pen, panesFrame.Width / 2, 0, panesFrame.Width / 2, panesFrame.Height);
+            };
 
             taskPanel = new RoundedPanel();
             taskPanel.Name = "taskPanel";
             taskPanel.BackColor = panelColor;
             taskPanel.BorderColor = UiTheme.Border;
             taskPanel.Shadow = false;
+            taskPanel.CornerRadius = 11;
             Controls.Add(taskPanel);
 
             Label taskTitle = new Label();
-            taskTitle.Text = "传输列表";
-            taskTitle.Font = new Font(UiTheme.FontFamily, 12F, FontStyle.Bold);
+            taskTitle.Text = "传输活动";
+            taskTitle.Font = new Font(UiTheme.FontFamily, 9F);
+            taskTitle.ForeColor = text;
             taskTitle.AutoSize = true;
-            taskTitle.Location = new Point(14, 12);
+            taskTitle.Location = new Point(17, 17);
             taskPanel.Controls.Add(taskTitle);
 
             activityToggleButton = (ModernButton)MakeToolbarIcon(UiIcon.ChevronDown, "展开传输活动");
@@ -199,6 +247,7 @@ namespace OMirror
             statusLabel.Text = "选择一侧的文件或文件夹，再发送到另一侧当前目录";
             statusLabel.ForeColor = muted;
             statusLabel.AutoEllipsis = true;
+            statusLabel.Font = new Font(UiTheme.FontFamily, 8.25F);
             taskPanel.Controls.Add(statusLabel);
             statusLabel.BringToFront();
 
@@ -220,18 +269,28 @@ namespace OMirror
                 RefreshRemote();
             };
             UiTheme.ThemeChanged += ApplyTheme;
+            Label hint = new Label();
+            hint.Text = "选择文件或文件夹，传输至另一侧当前打开的目录。";
+            hint.ForeColor = muted;
+            hint.Font = new Font(UiTheme.FontFamily, 8.25F);
+            hint.AutoSize = true;
+            hint.Location = new Point(25, 686);
+            hint.Anchor = AnchorStyles.Left | AnchorStyles.Bottom;
+            Controls.Add(hint);
+            ResumeLayout(true);
+            controlsReady = true;
             LayoutControls();
         }
 
         private void BuildLocalPane()
         {
-            Label heading = MakePaneHeading("这台电脑");
+            SettingLabel heading = MakePaneHeading("这台电脑");
+            heading.Icon = UiIcon.Monitor;
             localPanel.Controls.Add(heading);
-            localPanel.Controls.Add(MakePaneCaption("选择源文件，或选择文件的接收目录"));
             localPanel.Controls.Add(localPathBox);
 
             ModernButton up = MakeToolbarIcon(UiIcon.ArrowUp, "上一级");
-            up.Location = new Point(14, 110);
+            up.Location = new Point(12, 95);
             up.Click += delegate
             {
                 DirectoryInfo parent = Directory.GetParent(localPath);
@@ -241,101 +300,139 @@ namespace OMirror
             localPanel.Controls.Add(up);
 
             ModernButton refresh = MakeToolbarIcon(UiIcon.Refresh, "刷新");
-            refresh.Location = new Point(56, 110);
+            refresh.Location = new Point(42, 95);
             refresh.Click += delegate { RefreshLocal(); };
             localPanel.Controls.Add(refresh);
 
             ModernButton browse = MakeToolbarIcon(UiIcon.Folder, "选择电脑目录");
-            browse.Location = new Point(98, 110);
+            browse.Location = new Point(72, 95);
             browse.Click += BrowseLocal;
             localPanel.Controls.Add(browse);
 
             ModernButton newFolder = MakeToolbarButton("新建文件夹");
-            newFolder.Location = new Point(140, 110);
-            newFolder.Size = new Size(104, 30);
+            newFolder.Location = new Point(106, 95);
+            newFolder.Size = new Size(108, 30);
+            newFolder.Icon = UiIcon.FolderPlus;
             newFolder.Click += CreateLocalFolder;
             localPanel.Controls.Add(newFolder);
 
-            localGrid.Location = new Point(14, 150);
+            localGrid.Location = new Point(0, 138);
             localPanel.Controls.Add(localGrid);
         }
 
         private void BuildRemotePane()
         {
-            Label heading = MakePaneHeading(deviceName);
+            SettingLabel heading = MakePaneHeading(deviceName);
+            heading.Icon = UiIcon.Phone;
             remotePanel.Controls.Add(heading);
-            remotePanel.Controls.Add(MakePaneCaption("手机共享存储，可直接前往下载或相册目录"));
             remotePanel.Controls.Add(remotePathBox);
 
             ModernButton up = MakeToolbarIcon(UiIcon.ArrowUp, "上一级");
-            up.Location = new Point(14, 110);
+            up.Location = new Point(12, 95);
             up.Click += delegate { NavigateRemote(AdbClient.RemoteParent(remotePath)); };
             remotePanel.Controls.Add(up);
 
             ModernButton refresh = MakeToolbarIcon(UiIcon.Refresh, "刷新");
-            refresh.Location = new Point(56, 110);
+            refresh.Location = new Point(42, 95);
             refresh.Click += delegate { RefreshRemote(); };
             remotePanel.Controls.Add(refresh);
 
             ModernButton downloads = MakeToolbarButton("Download");
-            downloads.Location = new Point(98, 110);
-            downloads.Size = new Size(92, 30);
+            downloads.Location = new Point(72, 95);
+            downloads.Size = new Size(70, 26);
+            downloads.Name = "downloads";
+            downloads.Kind = UiButtonKind.Secondary;
             downloads.Click += delegate { NavigateRemote("/sdcard/Download"); };
             remotePanel.Controls.Add(downloads);
 
             ModernButton newFolder = MakeToolbarButton("新建文件夹");
-            newFolder.Location = new Point(198, 110);
-            newFolder.Size = new Size(96, 30);
+            newFolder.Location = new Point(76, 95);
+            newFolder.Size = new Size(108, 30);
+            newFolder.Icon = UiIcon.FolderPlus;
             newFolder.Click += CreateRemoteFolder;
             remotePanel.Controls.Add(newFolder);
 
             ModernButton dcim = MakeToolbarButton("DCIM");
-            dcim.Location = new Point(302, 110);
-            dcim.Size = new Size(62, 30);
+            dcim.Location = new Point(302, 95);
+            dcim.Size = new Size(48, 26);
+            dcim.Name = "dcim";
+            dcim.Kind = UiButtonKind.Secondary;
             dcim.Click += delegate { NavigateRemote("/sdcard/DCIM"); };
             remotePanel.Controls.Add(dcim);
 
             remoteMoreButton = MakeToolbarIcon(UiIcon.More, "显示更多文件");
-            remoteMoreButton.Location = new Point(372, 110);
+            remoteMoreButton.Location = new Point(372, 95);
             remoteMoreButton.Enabled = false;
             remoteMoreButton.Click += delegate { AddRemoteBatch(); };
             remotePanel.Controls.Add(remoteMoreButton);
 
-            remoteGrid.Location = new Point(14, 150);
+            remoteGrid.Location = new Point(0, 138);
             remotePanel.Controls.Add(remoteGrid);
         }
 
         private void LayoutControls()
         {
-            int margin = 20;
-            int gap = 18;
-            int paneTop = 76;
-            int taskHeight = activityExpanded ? 200 : 52;
-            int taskTop = ClientSize.Height - margin - taskHeight;
-            int paneHeight = Math.Max(310, taskTop - paneTop - 16);
-            int paneWidth = (ClientSize.Width - margin * 2 - gap) / 2;
+            if (!controlsReady) return;
+            int margin = Scale(20), paneTop = Scale(106);
+            // Keep room for file rows when the activity drawer opens in a small window.
+            int taskHeight = activityExpanded ? Math.Min(Scale(200), Math.Max(Scale(88), ClientSize.Height - Scale(460))) : Scale(52);
+            int taskTop = ClientSize.Height - Scale(40) - taskHeight;
+            int paneHeight = Math.Max(1, taskTop - paneTop - Scale(14));
+            int frameWidth = ClientSize.Width - margin * 2;
+            int paneWidth = frameWidth / 2;
+            panesFrame.SetBounds(margin, paneTop, frameWidth, paneHeight);
+            localPanel.SetBounds(Scale(1), Scale(12), paneWidth - Scale(1), Math.Max(1, paneHeight - Scale(24)));
+            remotePanel.SetBounds(paneWidth + 1, Scale(12), frameWidth - paneWidth - Scale(1) - 1, Math.Max(1, paneHeight - Scale(24)));
+            LayoutPane(localPanel, localPathBox, localGrid, localSummary, sendButton);
+            LayoutPane(remotePanel, remotePathBox, remoteGrid, remoteSummary, receiveButton);
+            remotePanel.Controls["downloads"].SetBounds(remotePanel.Width - Scale(190), Scale(97), Scale(88), Scale(26));
+            remotePanel.Controls["dcim"].SetBounds(remotePanel.Width - Scale(96), Scale(97), Scale(58), Scale(26));
+            remoteMoreButton.SetBounds(remotePanel.Width - Scale(37), Scale(95), Scale(30), Scale(30));
+            taskPanel.SetBounds(margin, taskTop, frameWidth, taskHeight);
+            activityToggleButton.SetBounds(taskPanel.Width - Scale(46), Scale(10), Scale(30), Scale(32));
+            clearTasksButton.SetBounds(taskPanel.Width - Scale(84), Scale(10), Scale(30), Scale(32));
+            statusLabel.SetBounds(Scale(112), Scale(16), taskPanel.Width - Scale(214), Scale(22));
+            progress.SetBounds(Scale(14), Scale(45), taskPanel.Width - Scale(28), Scale(4));
+            taskGrid.SetBounds(Scale(14), Scale(55), taskPanel.Width - Scale(28), Math.Max(1, taskPanel.Height - Scale(69)));
+        }
 
-            localPanel.SetBounds(margin, paneTop, paneWidth, paneHeight);
-            remotePanel.SetBounds(margin + paneWidth + gap, paneTop, paneWidth, paneHeight);
-
-            localPathBox.SetBounds(14, 70, paneWidth - 28, 30);
-            remotePathBox.SetBounds(14, 70, paneWidth - 28, 30);
-            localGrid.Size = new Size(paneWidth - 28, paneHeight - 164);
-            remoteGrid.Size = new Size(paneWidth - 28, paneHeight - 164);
-
-            int center = ClientSize.Width / 2;
-            sendButton.SetBounds(center - 194, 18, 142, 38);
-            receiveButton.SetBounds(center + 52, 18, 142, 38);
-
-            if (taskPanel != null)
+        private void LayoutPane(Panel pane, RoundedTextBox path, DataGridView grid, Label summary, ModernButton action)
+        {
+            path.SetBounds(Scale(18), Scale(53), pane.Width - Scale(36), Scale(32));
+            action.SetBounds(pane.Width - Scale(118), Scale(6), Scale(100), Scale(33));
+            action.BringToFront();
+            foreach (Control control in pane.Controls)
+                if (control is SettingLabel) control.SetBounds(Scale(18), Scale(6), pane.Width - Scale(154), Scale(33));
+            grid.SetBounds(0, Scale(138), pane.Width, Math.Max(1, pane.Height - Scale(162)));
+            grid.ColumnHeadersHeight = Scale(30);
+            grid.Columns[0].Width = Scale(36);
+            grid.Columns[2].Width = Scale(110);
+            grid.Columns[3].Width = Scale(60);
+            grid.Columns[4].Width = Scale(72);
+            int rowHeight = Scale(36);
+            if (grid.RowTemplate.Height != rowHeight)
             {
-                taskPanel.SetBounds(margin, taskTop, ClientSize.Width - margin * 2, taskHeight);
-                activityToggleButton.SetBounds(taskPanel.Width - 50, 10, 34, 32);
-                clearTasksButton.SetBounds(taskPanel.Width - 92, 10, 34, 32);
-                statusLabel.SetBounds(112, 16, taskPanel.Width - 220, 22);
-                progress.SetBounds(14, 45, taskPanel.Width - 28, 4);
-                taskGrid.SetBounds(14, 55, taskPanel.Width - 28, Math.Max(80, taskPanel.Height - 69));
+                grid.RowTemplate.Height = rowHeight;
+                foreach (DataGridViewRow row in grid.Rows) row.Height = rowHeight;
             }
+            summary.SetBounds(Scale(16), pane.Height - Scale(22), pane.Width - Scale(32), Scale(22));
+        }
+
+        private Label MakeSummary()
+        {
+            Label label = new Label();
+            label.Font = new Font(UiTheme.FontFamily, 7.5F);
+            label.ForeColor = UiTheme.TextMuted;
+            label.TextAlign = ContentAlignment.MiddleLeft;
+            label.AutoEllipsis = true;
+            return label;
+        }
+
+        private void UpdatePaneSummaries()
+        {
+            if (localSummary == null || remoteSummary == null) return;
+            localSummary.Text = localGrid.Rows.Count + " 个项目";
+            remoteSummary.Text = remoteGrid.Rows.Count + " 个项目 · 手机共享存储";
         }
 
         private void SetActivityExpanded(bool expanded)
@@ -352,6 +449,8 @@ namespace OMirror
         private void ApplyTheme(ThemePalette previous)
         {
             UiTheme.ApplyControlTree(this, previous);
+            ApplyFileGridTheme(localGrid);
+            ApplyFileGridTheme(remoteGrid);
             BackColor = UiTheme.Background;
             ForeColor = UiTheme.Text;
             WindowTheme.Apply(this);
@@ -360,32 +459,43 @@ namespace OMirror
 
         private Panel MakePane()
         {
-            RoundedPanel panel = new RoundedPanel();
+            Panel panel = new Panel();
             panel.BackColor = panelColor;
-            panel.BorderColor = UiTheme.Border;
-            panel.Shadow = false;
             return panel;
         }
 
-        private Label MakePaneHeading(string heading)
+        private void ApplyFileGridTheme(DataGridView grid)
         {
-            Label label = new Label();
-            label.Text = heading;
-            label.Font = new Font(UiTheme.FontFamily, 12F, FontStyle.Bold);
-            label.ForeColor = text;
-            label.AutoSize = true;
-            label.Location = new Point(14, 12);
-            return label;
+            if (grid == null)
+                return;
+            grid.BackgroundColor = UiTheme.Surface;
+            grid.GridColor = UiTheme.Border;
+            grid.ColumnHeadersDefaultCellStyle.BackColor = UiTheme.Background;
+            grid.ColumnHeadersDefaultCellStyle.ForeColor = muted;
+            grid.ColumnHeadersDefaultCellStyle.Font = new Font(UiTheme.FontFamily, 7.5F);
+            grid.ColumnHeadersDefaultCellStyle.SelectionBackColor = UiTheme.Background;
+            grid.ColumnHeadersDefaultCellStyle.SelectionForeColor = text;
+            grid.DefaultCellStyle.BackColor = UiTheme.Surface;
+            grid.DefaultCellStyle.ForeColor = text;
+            grid.DefaultCellStyle.SelectionBackColor = UiTheme.IsDark
+                ? Color.FromArgb(32, 61, 96)
+                : Color.FromArgb(232, 242, 255);
+            grid.DefaultCellStyle.SelectionForeColor = text;
+            grid.AlternatingRowsDefaultCellStyle.BackColor = UiTheme.IsDark ? Color.FromArgb(48, 48, 52) : Color.FromArgb(249, 249, 251);
+            grid.AlternatingRowsDefaultCellStyle.ForeColor = text;
+            grid.Columns[2].DefaultCellStyle.ForeColor = UiTheme.TextMuted;
+            grid.Columns[3].DefaultCellStyle.ForeColor = UiTheme.TextMuted;
+            grid.Columns[4].DefaultCellStyle.ForeColor = UiTheme.TextMuted;
         }
 
-        private Label MakePaneCaption(string caption)
+        private SettingLabel MakePaneHeading(string heading)
         {
-            Label label = new Label();
-            label.Text = caption;
-            label.Font = new Font(UiTheme.FontFamily, 8.5F);
-            label.ForeColor = muted;
-            label.AutoSize = true;
-            label.Location = new Point(15, 42);
+            SettingLabel label = new SettingLabel();
+            label.Text = heading;
+            label.Font = new Font(UiTheme.FontFamily, 11.25F, FontStyle.Bold);
+            label.ForeColor = text;
+            label.Size = new Size(230, 33);
+            label.Location = new Point(18, 6);
             return label;
         }
 
@@ -402,7 +512,9 @@ namespace OMirror
             button.Kind = UiButtonKind.Primary;
             button.BackColor = accent;
             button.ForeColor = Color.White;
-            button.Font = new Font(UiTheme.FontFamily, 9.5F, FontStyle.Bold);
+            button.Font = new Font(UiTheme.FontFamily, 9F);
+            button.IconSize = 17;
+            button.CornerRadius = 9;
             button.Cursor = Cursors.Hand;
             return button;
         }
@@ -411,7 +523,9 @@ namespace OMirror
         {
             ModernButton button = new ModernButton();
             button.Text = caption;
-            button.Kind = UiButtonKind.Secondary;
+            button.Kind = UiButtonKind.Quiet;
+            button.Font = new Font(UiTheme.FontFamily, 8.25F);
+            button.IconSize = 15;
             button.Size = new Size(78, 30);
             button.BackColor = panelColor;
             button.ForeColor = text;
@@ -426,7 +540,7 @@ namespace OMirror
             button.IconOnly = true;
             button.IconSize = 18;
             button.AccessibleName = accessibleName;
-            button.Size = new Size(34, 30);
+            button.Size = new Size(30, 30);
             button.CornerRadius = 9;
             toolTip.SetToolTip(button, accessibleName);
             return button;
@@ -440,30 +554,33 @@ namespace OMirror
             grid.AllowUserToResizeRows = false;
             grid.BackgroundColor = UiTheme.Surface;
             grid.BorderStyle = BorderStyle.None;
-            grid.CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal;
+            grid.CellBorderStyle = DataGridViewCellBorderStyle.None;
             grid.GridColor = UiTheme.Border;
             grid.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.None;
-            grid.ColumnHeadersHeight = 38;
+            grid.ColumnHeadersHeight = 30;
             grid.EnableHeadersVisualStyles = false;
-            grid.ColumnHeadersDefaultCellStyle.BackColor = UiTheme.SurfaceRaised;
-            grid.ColumnHeadersDefaultCellStyle.ForeColor = text;
-            grid.ColumnHeadersDefaultCellStyle.Font = new Font(UiTheme.FontFamily, 9F, FontStyle.Bold);
+            grid.ColumnHeadersDefaultCellStyle.BackColor = UiTheme.Background;
+            grid.ColumnHeadersDefaultCellStyle.ForeColor = muted;
+            grid.ColumnHeadersDefaultCellStyle.Font = new Font(UiTheme.FontFamily, 7.5F);
             grid.ColumnHeadersDefaultCellStyle.SelectionBackColor = UiTheme.SurfaceRaised;
             grid.DefaultCellStyle.BackColor = UiTheme.Surface;
             grid.DefaultCellStyle.ForeColor = text;
+            grid.AlternatingRowsDefaultCellStyle.BackColor = UiTheme.IsDark ? Color.FromArgb(48, 48, 52) : Color.FromArgb(249, 249, 251);
+            grid.AlternatingRowsDefaultCellStyle.ForeColor = text;
             grid.DefaultCellStyle.SelectionBackColor = UiTheme.IsDark
-                ? Color.FromArgb(38, 72, 112)
-                : Color.FromArgb(222, 237, 255);
+                ? Color.FromArgb(32, 61, 96)
+                : Color.FromArgb(232, 242, 255);
             grid.DefaultCellStyle.SelectionForeColor = text;
-            grid.DefaultCellStyle.Padding = new Padding(5, 2, 5, 2);
+            grid.DefaultCellStyle.Padding = new Padding(5, 1, 5, 1);
             grid.RowHeadersVisible = false;
             grid.RowTemplate.Height = 36;
             grid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
             grid.MultiSelect = true;
             grid.AutoGenerateColumns = false;
+            grid.CellPainting += FileGridCellPainting;
 
             DataGridViewCheckBoxColumn check = new DataGridViewCheckBoxColumn();
-            check.Width = 38;
+            check.Width = 36;
             check.HeaderText = "";
             grid.Columns.Add(check);
 
@@ -475,21 +592,67 @@ namespace OMirror
 
             DataGridViewTextBoxColumn modified = new DataGridViewTextBoxColumn();
             modified.HeaderText = "修改日期";
-            modified.Width = 142;
+            modified.Width = 110;
+            modified.DefaultCellStyle.Font = new Font(UiTheme.FontFamily, 7.5F);
             grid.Columns.Add(modified);
 
             DataGridViewTextBoxColumn type = new DataGridViewTextBoxColumn();
             type.HeaderText = "类型";
-            type.Width = 74;
+            type.Width = 60;
+            type.DefaultCellStyle.Font = new Font(UiTheme.FontFamily, 7.5F);
             grid.Columns.Add(type);
 
             DataGridViewTextBoxColumn size = new DataGridViewTextBoxColumn();
             size.HeaderText = "大小";
-            size.Width = 88;
+            size.Width = 72;
+            size.DefaultCellStyle.Font = new Font(UiTheme.FontFamily, 7.5F);
             size.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
             grid.Columns.Add(size);
 
+            ApplyFileGridTheme(grid);
             return grid;
+        }
+
+        private void FileGridCellPainting(object sender, DataGridViewCellPaintingEventArgs e)
+        {
+            if (e.RowIndex >= 0 && e.ColumnIndex == 0)
+            {
+                e.PaintBackground(e.CellBounds, true);
+                float scale = e.Graphics.DpiX / 96F;
+                int size = (int)Math.Round(13 * scale);
+                Rectangle box = new Rectangle(e.CellBounds.Left + (e.CellBounds.Width - size) / 2,
+                    e.CellBounds.Top + (e.CellBounds.Height - size) / 2, size, size);
+                bool selected = e.FormattedValue is bool && (bool)e.FormattedValue;
+                e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                using (System.Drawing.Drawing2D.GraphicsPath path = RoundedPanel.CreateRoundedRect(box, (int)Math.Round(3 * scale)))
+                using (Pen pen = new Pen(selected ? UiTheme.Accent : UiTheme.BorderStrong, scale))
+                {
+                    if (selected)
+                        using (SolidBrush brush = new SolidBrush(UiTheme.Accent)) e.Graphics.FillPath(brush, path);
+                    e.Graphics.DrawPath(pen, path);
+                }
+                if (selected) UiIconRenderer.Draw(e.Graphics, UiIcon.Check, box, Color.White);
+                e.Paint(e.ClipBounds, DataGridViewPaintParts.Focus);
+                e.Handled = true;
+                return;
+            }
+            if (e.RowIndex < 0 || e.ColumnIndex != 1 || e.Value == null)
+                return;
+            FileEntry entry = ((DataGridView)sender).Rows[e.RowIndex].Tag as FileEntry;
+            if (entry == null)
+                return;
+
+            e.PaintBackground(e.CellBounds, true);
+            float dpiScale = e.Graphics.DpiX / 96F;
+            int iconSize = Math.Max(14, (int)Math.Round(18 * dpiScale));
+            int iconLeft = e.CellBounds.Left + (int)Math.Round(7 * dpiScale);
+            int iconTop = e.CellBounds.Top + (e.CellBounds.Height - iconSize) / 2;
+            Rectangle iconBounds = new Rectangle(iconLeft, iconTop, iconSize, iconSize);
+            UiIconRenderer.Draw(e.Graphics, entry.IsDirectory ? UiIcon.Folder : UiIcon.File, iconBounds,
+                entry.IsDirectory ? Color.FromArgb(90, 178, 240) : Color.FromArgb(145, 164, 184));
+            Rectangle textBounds = new Rectangle(iconBounds.Right + (int)Math.Round(7 * dpiScale), e.CellBounds.Top, e.CellBounds.Width - iconBounds.Right + e.CellBounds.Left - (int)Math.Round(10 * dpiScale), e.CellBounds.Height);
+            TextRenderer.DrawText(e.Graphics, entry.Name, e.CellStyle.Font, textBounds, e.CellStyle.ForeColor, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+            e.Handled = true;
         }
 
         private DataGridView MakeTaskGrid()
@@ -500,19 +663,19 @@ namespace OMirror
             grid.AllowUserToResizeRows = false;
             grid.BackgroundColor = UiTheme.Surface;
             grid.BorderStyle = BorderStyle.None;
-            grid.CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal;
+            grid.CellBorderStyle = DataGridViewCellBorderStyle.None;
             grid.GridColor = UiTheme.Border;
             grid.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.None;
             grid.ColumnHeadersHeight = 34;
             grid.EnableHeadersVisualStyles = false;
             grid.ColumnHeadersDefaultCellStyle.BackColor = UiTheme.SurfaceRaised;
-            grid.ColumnHeadersDefaultCellStyle.ForeColor = text;
+            grid.ColumnHeadersDefaultCellStyle.ForeColor = muted;
             grid.ColumnHeadersDefaultCellStyle.Font = new Font(UiTheme.FontFamily, 9F, FontStyle.Bold);
             grid.DefaultCellStyle.BackColor = UiTheme.Surface;
             grid.DefaultCellStyle.ForeColor = text;
             grid.DefaultCellStyle.SelectionBackColor = UiTheme.IsDark
-                ? Color.FromArgb(38, 72, 112)
-                : Color.FromArgb(222, 237, 255);
+                ? Color.FromArgb(32, 61, 96)
+                : Color.FromArgb(232, 242, 255);
             grid.DefaultCellStyle.SelectionForeColor = text;
             grid.RowHeadersVisible = false;
             grid.RowTemplate.Height = 30;

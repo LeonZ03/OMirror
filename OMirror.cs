@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -12,8 +12,8 @@ using System.Windows.Forms;
 
 [assembly: AssemblyTitle("OMirror")]
 [assembly: AssemblyProduct("OMirror")]
-[assembly: AssemblyVersion("1.15.0.0")]
-[assembly: AssemblyFileVersion("1.15.0.0")]
+[assembly: AssemblyVersion("1.16.0.0")]
+[assembly: AssemblyFileVersion("1.16.0.0")]
 
 namespace OMirror
 {
@@ -80,6 +80,12 @@ namespace OMirror
         public static Color Success { get { return current.Success; } }
         public static Color Offline { get { return current.Offline; } }
         public static Color Danger { get { return current.Danger; } }
+
+        public static int Scale(Control control, int value)
+        {
+            using (Graphics graphics = control.CreateGraphics())
+                return (int)Math.Round(value * graphics.DpiX / 96F);
+        }
 
         public static void SetDark(bool dark)
         {
@@ -183,20 +189,20 @@ namespace OMirror
             p.IsDark = false;
             p.Background = Color.FromArgb(245, 245, 247);
             p.Surface = Color.White;
-            p.SurfaceRaised = Color.FromArgb(250, 250, 252);
+            p.SurfaceRaised = Color.FromArgb(248, 248, 250);
             p.SurfaceMuted = Color.FromArgb(238, 238, 241);
             p.SurfaceHover = Color.FromArgb(232, 232, 236);
             p.SurfacePressed = Color.FromArgb(218, 218, 223);
-            p.Border = Color.FromArgb(222, 222, 226);
+            p.Border = Color.FromArgb(229, 229, 233);
             p.BorderStrong = Color.FromArgb(190, 190, 196);
-            p.Text = Color.FromArgb(29, 29, 31);
-            p.TextMuted = Color.FromArgb(88, 88, 94);
-            p.TextDim = Color.FromArgb(134, 134, 139);
-            p.Accent = Color.FromArgb(0, 122, 255);
+            p.Text = Color.FromArgb(32, 33, 36);
+            p.TextMuted = Color.FromArgb(104, 104, 109);
+            p.TextDim = Color.FromArgb(113, 113, 120);
+            p.Accent = Color.FromArgb(0, 113, 227);
             p.AccentHover = Color.FromArgb(0, 113, 227);
             p.AccentPressed = Color.FromArgb(0, 97, 204);
             p.Success = Color.FromArgb(31, 122, 54);
-            p.Offline = Color.FromArgb(134, 134, 139);
+            p.Offline = Color.FromArgb(113, 113, 120);
             p.Danger = Color.FromArgb(215, 0, 21);
             return p;
         }
@@ -205,16 +211,16 @@ namespace OMirror
         {
             ThemePalette p = new ThemePalette();
             p.IsDark = true;
-            p.Background = Color.FromArgb(28, 28, 30);
-            p.Surface = Color.FromArgb(44, 44, 46);
-            p.SurfaceRaised = Color.FromArgb(58, 58, 60);
-            p.SurfaceMuted = Color.FromArgb(72, 72, 74);
+            p.Background = Color.FromArgb(32, 32, 35);
+            p.Surface = Color.FromArgb(44, 44, 47);
+            p.SurfaceRaised = Color.FromArgb(48, 48, 52);
+            p.SurfaceMuted = Color.FromArgb(59, 59, 64);
             p.SurfaceHover = Color.FromArgb(82, 82, 85);
             p.SurfacePressed = Color.FromArgb(99, 99, 102);
-            p.Border = Color.FromArgb(72, 72, 74);
+            p.Border = Color.FromArgb(65, 65, 70);
             p.BorderStrong = Color.FromArgb(112, 112, 117);
             p.Text = Color.FromArgb(245, 245, 247);
-            p.TextMuted = Color.FromArgb(199, 199, 204);
+            p.TextMuted = Color.FromArgb(177, 177, 186);
             p.TextDim = Color.FromArgb(142, 142, 147);
             p.Accent = Color.FromArgb(10, 132, 255);
             p.AccentHover = Color.FromArgb(64, 156, 255);
@@ -236,6 +242,12 @@ namespace OMirror
                 IntPtr handle = form.Handle;
                 if (DwmSetWindowAttribute(handle, 20, ref enabled, sizeof(int)) != 0)
                     DwmSetWindowAttribute(handle, 19, ref enabled, sizeof(int));
+                int rounded = 2;
+                int caption = ColorTranslator.ToWin32(UiTheme.Background);
+                int captionText = ColorTranslator.ToWin32(UiTheme.Text);
+                DwmSetWindowAttribute(handle, 33, ref rounded, sizeof(int));
+                DwmSetWindowAttribute(handle, 35, ref caption, sizeof(int));
+                DwmSetWindowAttribute(handle, 36, ref captionText, sizeof(int));
             }
             catch
             {
@@ -268,7 +280,9 @@ namespace OMirror
         More,
         Trash,
         Stop,
-        ChevronUp
+        ChevronUp,
+        Phone, Monitor, ArrowLeft, ArrowRight, FolderPlus,
+        Moon, Pin, Keyboard, Appearance, File
     }
 
     internal static class UiIconRenderer
@@ -404,6 +418,82 @@ namespace OMirror
                 {
                     graphics.FillRectangle(brush, left + 7 * scale, top + 7 * scale, 10 * scale, 10 * scale);
                 }
+                else
+                {
+                    GraphicsState state = graphics.Save();
+                    graphics.TranslateTransform(left, top);
+                    graphics.ScaleTransform(scale, scale);
+                    using (Pen line = new Pen(color, 1.65F))
+                    {
+                        line.StartCap = line.EndCap = LineCap.Round;
+                        line.LineJoin = LineJoin.Round;
+                        if (icon == UiIcon.Phone)
+                        {
+                            graphics.DrawRoundedRectangle(line, new RectangleF(6.5F, 2, 11, 20), 3);
+                            graphics.DrawLine(line, 10, 5, 14, 5);
+                            graphics.DrawLine(line, 11, 19, 13, 19);
+                        }
+                        else if (icon == UiIcon.Monitor)
+                        {
+                            graphics.DrawRoundedRectangle(line, new RectangleF(2.5F, 3.5F, 19, 13), 2);
+                            graphics.DrawLine(line, 8, 21, 16, 21);
+                            graphics.DrawLine(line, 12, 17, 12, 21);
+                        }
+                        else if (icon == UiIcon.ArrowLeft || icon == UiIcon.ArrowRight)
+                        {
+                            graphics.DrawLine(line, 4, 12, 20, 12);
+                            graphics.DrawLines(line, icon == UiIcon.ArrowRight
+                                ? new Point[] { new Point(14, 6), new Point(20, 12), new Point(14, 18) }
+                                : new Point[] { new Point(10, 6), new Point(4, 12), new Point(10, 18) });
+                        }
+                        else if (icon == UiIcon.Moon)
+                        {
+                            using (GraphicsPath moon = new GraphicsPath())
+                            {
+                                moon.AddBezier(10, 3, -3, 7, 2, 24, 15, 21);
+                                moon.AddBezier(15, 21, 18, 20, 21, 17, 21, 14);
+                                moon.AddBezier(21, 14, 11, 18, 7, 10, 10, 3);
+                                graphics.DrawPath(line, moon);
+                            }
+                        }
+                        else if (icon == UiIcon.Pin)
+                        {
+                            graphics.DrawLines(line, new Point[] { new Point(8, 3), new Point(16, 3),
+                                new Point(15, 10), new Point(18, 13), new Point(18, 15),
+                                new Point(6, 15), new Point(6, 13), new Point(9, 10), new Point(8, 3) });
+                            graphics.DrawLine(line, 12, 15, 12, 22);
+                        }
+                        else if (icon == UiIcon.Keyboard)
+                        {
+                            graphics.DrawRoundedRectangle(line, new RectangleF(2, 5, 20, 14), 2);
+                            for (int y = 9; y <= 12; y += 3)
+                                for (int x = 6; x <= 18; x += 4)
+                                    graphics.FillEllipse(brush, x - .65F, y - .65F, 1.3F, 1.3F);
+                            graphics.DrawLine(line, 7, 16, 17, 16);
+                        }
+                        else if (icon == UiIcon.Appearance)
+                        {
+                            graphics.DrawEllipse(line, 3, 3, 18, 18);
+                            graphics.FillPie(brush, 3, 3, 18, 18, -90, 180);
+                        }
+                        else if (icon == UiIcon.File)
+                        {
+                            graphics.DrawLines(line, new Point[] { new Point(6, 2), new Point(14, 2),
+                                new Point(19, 7), new Point(19, 22), new Point(5, 22), new Point(5, 2), new Point(6, 2) });
+                            graphics.DrawLines(line, new Point[] { new Point(14, 2), new Point(14, 8), new Point(19, 8) });
+                            graphics.DrawLine(line, 8, 13, 16, 13);
+                            graphics.DrawLine(line, 8, 17, 14, 17);
+                        }
+                        else if (icon == UiIcon.FolderPlus)
+                        {
+                            graphics.DrawLines(line, new Point[] { new Point(3, 5), new Point(10, 5),
+                                new Point(12, 8), new Point(21, 8), new Point(21, 20), new Point(3, 20), new Point(3, 5) });
+                            graphics.DrawLine(line, 9, 14, 15, 14);
+                            graphics.DrawLine(line, 12, 11, 12, 17);
+                        }
+                    }
+                    graphics.Restore(state);
+                }
             }
         }
 
@@ -434,6 +524,7 @@ namespace OMirror
         public UiButtonKind Kind = UiButtonKind.Secondary;
         public UiIcon Icon = UiIcon.None;
         public bool IconOnly;
+        public bool ShowBorder;
         public int IconSize = 20;
         public bool AnimateIcon
         {
@@ -579,15 +670,12 @@ namespace OMirror
         protected override void OnPaint(PaintEventArgs e)
         {
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            float scale = e.Graphics.DpiX / 96F;
+            Func<int, int> px = delegate(int value) { return (int)Math.Round(value * scale); };
             Rectangle bounds = new Rectangle(0, 0, Width - 1, Height - 1);
             Color fill;
             Color content;
-
-            if (!Enabled)
-            {
-                fill = UiTheme.SurfaceMuted;
-                content = UiTheme.TextDim;
-            }
+            if (!Enabled) { fill = UiTheme.SurfaceMuted; content = UiTheme.TextDim; }
             else if (Kind == UiButtonKind.Primary)
             {
                 fill = pressed ? UiTheme.AccentPressed : hovered ? UiTheme.AccentHover : UiTheme.Accent;
@@ -595,8 +683,7 @@ namespace OMirror
             }
             else if (Kind == UiButtonKind.Danger)
             {
-                fill = pressed ? Color.FromArgb(190, UiTheme.Danger) :
-                    hovered ? Color.FromArgb(224, UiTheme.Danger) : UiTheme.Danger;
+                fill = pressed ? Color.FromArgb(190, UiTheme.Danger) : hovered ? Color.FromArgb(224, UiTheme.Danger) : UiTheme.Danger;
                 content = Color.White;
             }
             else if (Kind == UiButtonKind.Quiet)
@@ -609,25 +696,25 @@ namespace OMirror
                 fill = pressed ? UiTheme.SurfacePressed : hovered ? UiTheme.SurfaceHover : UiTheme.SurfaceMuted;
                 content = UiTheme.Text;
             }
-
-            using (GraphicsPath path = RoundedPanel.CreateRoundedRect(bounds, CornerRadius))
+            using (GraphicsPath path = RoundedPanel.CreateRoundedRect(bounds, px(CornerRadius)))
             using (SolidBrush brush = new SolidBrush(fill))
             {
                 e.Graphics.FillPath(brush, path);
+                if (ShowBorder)
+                    using (Pen pen = new Pen(UiTheme.Border, scale)) e.Graphics.DrawPath(pen, path);
             }
 
-            if (Icon != UiIcon.None)
+            bool hasText = !IconOnly && !string.IsNullOrEmpty(Text);
+            int iconSize = Icon == UiIcon.None ? 0 : Math.Min(px(IconSize), Math.Min(Width - px(8), Height - px(8)));
+            int gap = iconSize > 0 && hasText ? px(8) : 0;
+            TextFormatFlags flags = TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine |
+                TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding;
+            int textWidth = hasText ? Math.Min(TextRenderer.MeasureText(e.Graphics, Text, Font,
+                new Size(int.MaxValue, Height), flags).Width, Math.Max(0, Width - px(20) - iconSize - gap)) : 0;
+            int left = (Width - iconSize - gap - textWidth) / 2;
+            if (iconSize > 0)
             {
-                int size = Math.Min(IconSize, Math.Min(Width - 8, Height - 8));
-                Rectangle iconBounds;
-                if (IconOnly || string.IsNullOrEmpty(Text))
-                {
-                    iconBounds = new Rectangle((Width - size) / 2, (Height - size) / 2, size, size);
-                }
-                else
-                {
-                    iconBounds = new Rectangle(13, (Height - size) / 2, size, size);
-                }
+                Rectangle iconBounds = new Rectangle(left, (Height - iconSize) / 2, iconSize, iconSize);
                 GraphicsState iconState = null;
                 if (AnimateIcon)
                 {
@@ -639,31 +726,15 @@ namespace OMirror
                     e.Graphics.TranslateTransform(-centerX, -centerY);
                 }
                 UiIconRenderer.Draw(e.Graphics, Icon, iconBounds, content);
-                if (iconState != null)
-                    e.Graphics.Restore(iconState);
+                if (iconState != null) e.Graphics.Restore(iconState);
             }
-
-            if (!IconOnly && !string.IsNullOrEmpty(Text))
-            {
-                Rectangle textBounds = Icon == UiIcon.None
-                    ? bounds
-                    : new Rectangle(41, 0, Math.Max(0, Width - 50), Height);
-                TextRenderer.DrawText(
-                    e.Graphics,
-                    Text,
-                    Font,
-                    textBounds,
-                    content,
-                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
-                        TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
-            }
-
+            if (hasText)
+                TextRenderer.DrawText(e.Graphics, Text, Font,
+                    new Rectangle(left + iconSize + gap, 0, textWidth, Height), content, flags);
             if (Focused && ShowFocusCues)
             {
-                Rectangle focus = Rectangle.Inflate(bounds, -2, -2);
-                using (GraphicsPath focusPath = RoundedPanel.CreateRoundedRect(focus, Math.Max(4, CornerRadius - 2)))
-                using (Pen focusPen = new Pen(UiTheme.Accent, 2))
-                    e.Graphics.DrawPath(focusPen, focusPath);
+                using (GraphicsPath path = RoundedPanel.CreateRoundedRect(Rectangle.Inflate(bounds, -px(2), -px(2)), px(Math.Max(4, CornerRadius - 2))))
+                using (Pen pen = new Pen(UiTheme.Accent, px(2))) e.Graphics.DrawPath(pen, path);
             }
         }
 
@@ -701,6 +772,7 @@ namespace OMirror
 
     internal sealed class ToggleSwitch : Control
     {
+        public UiIcon Icon = UiIcon.None;
         private bool hovered;
         private bool isChecked;
 
@@ -731,7 +803,7 @@ namespace OMirror
             Cursor = Cursors.Hand;
             ForeColor = UiTheme.Text;
             BackColor = UiTheme.Surface;
-            Font = new Font(UiTheme.FontFamily, 9F, FontStyle.Regular);
+            Font = new Font(UiTheme.FontFamily, 9.75F, FontStyle.Regular);
             AccessibleRole = AccessibleRole.CheckButton;
             TabStop = true;
         }
@@ -824,48 +896,52 @@ namespace OMirror
         protected override void OnPaint(PaintEventArgs e)
         {
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            Rectangle controlBounds = new Rectangle(0, 0, Width - 1, Height - 1);
+            float scale = e.Graphics.DpiX / 96F;
+            Func<int, int> px = delegate(int value) { return (int)Math.Round(value * scale); };
+            Rectangle bounds = new Rectangle(0, 0, Width - 1, Height - 1);
             if (hovered)
-            {
-                using (GraphicsPath hoverPath = RoundedPanel.CreateRoundedRect(controlBounds, 8))
-                using (SolidBrush hoverBrush = new SolidBrush(UiTheme.SurfaceRaised))
-                    e.Graphics.FillPath(hoverBrush, hoverPath);
-            }
-
-            Rectangle track = new Rectangle(Width - 45, (Height - 22) / 2, 40, 22);
-            Color trackColor = Checked ? UiTheme.Accent : UiTheme.SurfaceMuted;
-            using (GraphicsPath trackPath = RoundedPanel.CreateRoundedRect(track, 11))
-            using (SolidBrush trackBrush = new SolidBrush(trackColor))
-            using (Pen trackPen = new Pen(Checked ? UiTheme.Accent : UiTheme.BorderStrong, 1))
-            {
-                e.Graphics.FillPath(trackBrush, trackPath);
-                e.Graphics.DrawPath(trackPen, trackPath);
-            }
-
-            int thumbX = Checked ? track.Right - 19 : track.Left + 3;
-            using (SolidBrush thumbBrush = new SolidBrush(Color.White))
-            using (Pen thumbPen = new Pen(Color.FromArgb(205, 205, 210), 1))
-            {
-                e.Graphics.FillEllipse(thumbBrush, thumbX, track.Top + 3, 16, 16);
-                e.Graphics.DrawEllipse(thumbPen, thumbX, track.Top + 3, 16, 16);
-            }
-
-            Rectangle textBounds = new Rectangle(6, 0, Math.Max(0, Width - 57), Height);
-            TextRenderer.DrawText(
-                e.Graphics,
-                Text,
-                Font,
-                textBounds,
-                Enabled ? UiTheme.Text : UiTheme.TextDim,
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
-                    TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
-
+                using (GraphicsPath path = RoundedPanel.CreateRoundedRect(bounds, px(8)))
+                using (SolidBrush brush = new SolidBrush(UiTheme.SurfaceRaised)) e.Graphics.FillPath(brush, path);
+            Rectangle track = new Rectangle(Width - px(38), (Height - px(23)) / 2, px(38), px(23));
+            using (GraphicsPath path = RoundedPanel.CreateRoundedRect(track, px(11)))
+            using (SolidBrush brush = new SolidBrush(Checked ? UiTheme.Accent :
+                UiTheme.IsDark ? Color.FromArgb(100, 100, 108) : Color.FromArgb(213, 213, 218)))
+                e.Graphics.FillPath(brush, path);
+            int thumbX = Checked ? track.Right - px(21) : track.Left + px(2);
+            using (SolidBrush shadow = new SolidBrush(Color.FromArgb(22, 0, 0, 0)))
+                e.Graphics.FillEllipse(shadow, thumbX, track.Top + px(3), px(19), px(19));
+            using (SolidBrush brush = new SolidBrush(Color.White))
+                e.Graphics.FillEllipse(brush, thumbX, track.Top + px(2), px(19), px(19));
+            int textLeft = Icon == UiIcon.None ? 0 : px(28);
+            UiIconRenderer.Draw(e.Graphics, Icon, new Rectangle(0, (Height - px(18)) / 2, px(18), px(18)), UiTheme.TextMuted);
+            TextRenderer.DrawText(e.Graphics, Text, Font, new Rectangle(textLeft, 0,
+                Math.Max(0, Width - textLeft - px(54)), Height), Enabled ? UiTheme.Text : UiTheme.TextDim,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine |
+                TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
             if (Focused && ShowFocusCues)
-            {
-                using (GraphicsPath focusPath = RoundedPanel.CreateRoundedRect(Rectangle.Inflate(controlBounds, -2, -2), 7))
-                using (Pen focusPen = new Pen(UiTheme.Accent, 2))
-                    e.Graphics.DrawPath(focusPen, focusPath);
-            }
+                using (GraphicsPath path = RoundedPanel.CreateRoundedRect(Rectangle.Inflate(bounds, -px(2), -px(2)), px(7)))
+                using (Pen pen = new Pen(UiTheme.Accent, px(2))) e.Graphics.DrawPath(pen, path);
+        }
+    }
+
+    internal sealed class SettingLabel : Control
+    {
+        public UiIcon Icon;
+        public SettingLabel()
+        {
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
+                ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+            Font = new Font(UiTheme.FontFamily, 9.75F);
+            BackColor = UiTheme.Surface;
+            TabStop = false;
+        }
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            float scale = e.Graphics.DpiX / 96F;
+            int iconSize = (int)Math.Round(18 * scale), left = (int)Math.Round(28 * scale);
+            UiIconRenderer.Draw(e.Graphics, Icon, new Rectangle(0, (Height - iconSize) / 2, iconSize, iconSize), UiTheme.TextMuted);
+            TextRenderer.DrawText(e.Graphics, Text, Font, new Rectangle(left, 0, Width - left, Height), UiTheme.Text,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
         }
     }
 
@@ -909,7 +985,7 @@ namespace OMirror
                 ControlStyles.ResizeRedraw, true);
             BackColor = UiTheme.Surface;
             ForeColor = UiTheme.Text;
-            Font = new Font(UiTheme.FontFamily, 8.5F, FontStyle.Regular);
+            Font = new Font(UiTheme.FontFamily, 8.25F, FontStyle.Regular);
             Cursor = Cursors.Hand;
             TabStop = true;
             AccessibleRole = AccessibleRole.ComboBox;
@@ -977,45 +1053,36 @@ namespace OMirror
         protected override void OnPaint(PaintEventArgs e)
         {
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            float scale = e.Graphics.DpiX / 96F;
+            Func<int, int> px = delegate(int value) { return (int)Math.Round(value * scale); };
             Rectangle bounds = new Rectangle(0, 0, Width - 1, Height - 1);
-            using (GraphicsPath outer = RoundedPanel.CreateRoundedRect(bounds, 8))
-            using (SolidBrush backgroundBrush = new SolidBrush(UiTheme.SurfaceMuted))
-            using (Pen borderPen = new Pen(UiTheme.Border, 1))
+            using (GraphicsPath outer = RoundedPanel.CreateRoundedRect(bounds, px(8)))
+            using (SolidBrush brush = new SolidBrush(UiTheme.SurfaceMuted)) e.Graphics.FillPath(brush, outer);
+            for (int index = 0; index < ItemCount; index++)
             {
-                e.Graphics.FillPath(backgroundBrush, outer);
-                e.Graphics.DrawPath(borderPen, outer);
+                int left = index * Width / ItemCount + px(3);
+                int right = (index + 1) * Width / ItemCount - px(3);
+                Rectangle item = new Rectangle(left, px(3), Math.Max(1, right - left), Height - px(6));
+                if (index == selectedIndex || index == hoveredIndex)
+                {
+                    if (index == selectedIndex)
+                    {
+                        Rectangle shadowBounds = item; shadowBounds.Offset(0, px(1));
+                        using (GraphicsPath shadow = RoundedPanel.CreateRoundedRect(shadowBounds, px(6)))
+                        using (SolidBrush brush = new SolidBrush(Color.FromArgb(18, 0, 0, 0))) e.Graphics.FillPath(brush, shadow);
+                    }
+                    Color fill = index == selectedIndex ? (UiTheme.IsDark ? Color.FromArgb(97, 97, 103) : UiTheme.Surface) : UiTheme.SurfaceHover;
+                    using (GraphicsPath path = RoundedPanel.CreateRoundedRect(item, px(6)))
+                    using (SolidBrush brush = new SolidBrush(fill)) e.Graphics.FillPath(brush, path);
+                }
+                TextRenderer.DrawText(e.Graphics, ItemText(index), Font, item,
+                    index == selectedIndex ? UiTheme.Text : UiTheme.TextMuted,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine |
+                    TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
             }
-
-            int count = ItemCount;
-            int itemWidth = Width / count;
-            for (int index = 0; index < count; index++)
-            {
-                int itemLeft = index * itemWidth + 3;
-                int itemRight = index == count - 1 ? Width - 3 : (index + 1) * itemWidth - 2;
-                Rectangle item = new Rectangle(itemLeft, 3, Math.Max(1, itemRight - itemLeft), Height - 7);
-                Color fill = index == selectedIndex
-                    ? UiTheme.Accent
-                    : index == hoveredIndex ? UiTheme.SurfaceRaised : UiTheme.SurfaceMuted;
-                using (GraphicsPath itemPath = RoundedPanel.CreateRoundedRect(item, 6))
-                using (SolidBrush itemBrush = new SolidBrush(fill))
-                    e.Graphics.FillPath(itemBrush, itemPath);
-
-                TextRenderer.DrawText(
-                    e.Graphics,
-                    ItemText(index),
-                    Font,
-                    item,
-                    index == selectedIndex ? Color.White : UiTheme.TextMuted,
-                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
-                        TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
-            }
-
             if (Focused && ShowFocusCues)
-            {
-                using (GraphicsPath focusPath = RoundedPanel.CreateRoundedRect(Rectangle.Inflate(bounds, -2, -2), 6))
-                using (Pen focusPen = new Pen(UiTheme.Accent, 2))
-                    e.Graphics.DrawPath(focusPen, focusPath);
-            }
+                using (GraphicsPath path = RoundedPanel.CreateRoundedRect(Rectangle.Inflate(bounds, -px(2), -px(2)), px(6)))
+                using (Pen pen = new Pen(UiTheme.Accent, px(2))) e.Graphics.DrawPath(pen, path);
         }
 
         private string ItemText(int index)
@@ -1060,7 +1127,7 @@ namespace OMirror
             input.BorderStyle = BorderStyle.None;
             input.BackColor = UiTheme.SurfaceRaised;
             input.ForeColor = UiTheme.Text;
-            input.Font = new Font("Consolas", 9.5F);
+            input.Font = new Font(UiTheme.FontFamily, 8.25F);
             input.TabStop = true;
             input.GotFocus += delegate { Invalidate(); };
             input.LostFocus += delegate { Invalidate(); };
@@ -1073,7 +1140,8 @@ namespace OMirror
             base.OnResize(e);
             int inputHeight = input == null ? 20 : input.PreferredHeight;
             if (input != null)
-                input.SetBounds(11, Math.Max(1, (Height - inputHeight) / 2), Math.Max(1, Width - 22), inputHeight);
+                input.SetBounds(UiTheme.Scale(this, 32), Math.Max(1, (Height - inputHeight) / 2),
+                    Math.Max(1, Width - UiTheme.Scale(this, 43)), inputHeight);
         }
 
         protected override void OnMouseDown(MouseEventArgs e)
@@ -1085,14 +1153,18 @@ namespace OMirror
         protected override void OnPaint(PaintEventArgs e)
         {
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            float scale = e.Graphics.DpiX / 96F;
             Rectangle bounds = new Rectangle(0, 0, Width - 1, Height - 1);
-            using (GraphicsPath path = RoundedPanel.CreateRoundedRect(bounds, 8))
+            using (GraphicsPath path = RoundedPanel.CreateRoundedRect(bounds, (int)Math.Round(7 * scale)))
             using (SolidBrush fill = new SolidBrush(UiTheme.SurfaceRaised))
-            using (Pen pen = new Pen(input.Focused ? UiTheme.Accent : UiTheme.Border, input.Focused ? 2 : 1))
+            using (Pen pen = new Pen(input.Focused ? UiTheme.Accent : UiTheme.Border, (input.Focused ? 2 : 1) * scale))
             {
                 e.Graphics.FillPath(fill, path);
                 e.Graphics.DrawPath(pen, path);
             }
+            int size = (int)Math.Round(15 * scale);
+            UiIconRenderer.Draw(e.Graphics, UiIcon.Folder, new Rectangle((int)Math.Round(10 * scale),
+                (Height - size) / 2, size, size), UiTheme.TextMuted);
         }
     }
 
@@ -1308,6 +1380,11 @@ namespace OMirror
 
         protected override void OnPaint(PaintEventArgs e)
         {
+            if (ShowsChevron)
+            {
+                PaintActiveDevice(e);
+                return;
+            }
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
             Rectangle bounds = new Rectangle(0, 0, Width - 1, Height - 1);
             Color fill = Selected && !ShowsChevron
@@ -1404,6 +1481,60 @@ namespace OMirror
             }
         }
 
+        private void PaintActiveDevice(PaintEventArgs e)
+        {
+            if (device == null) return;
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            float scale = e.Graphics.DpiX / 96F;
+            Func<int, int> px = delegate(int value) { return (int)Math.Round(value * scale); };
+            Rectangle bounds = new Rectangle(0, 0, Width - 1, Height - 1);
+            if (hovered)
+                using (GraphicsPath path = RoundedPanel.CreateRoundedRect(bounds, px(10)))
+                using (SolidBrush brush = new SolidBrush(UiTheme.SurfaceRaised)) e.Graphics.FillPath(brush, path);
+            Rectangle well = new Rectangle(0, px(5), px(48), px(60));
+            using (GraphicsPath path = RoundedPanel.CreateRoundedRect(well, px(14)))
+            using (LinearGradientBrush brush = new LinearGradientBrush(well,
+                UiTheme.IsDark ? Color.FromArgb(37, 59, 89) : Color.FromArgb(239, 247, 255),
+                UiTheme.IsDark ? Color.FromArgb(37, 67, 101) : Color.FromArgb(226, 237, 254), 65F))
+                e.Graphics.FillPath(brush, path);
+            Color blue = UiTheme.IsDark ? Color.FromArgb(127, 189, 255) : UiTheme.Accent;
+            UiIconRenderer.Draw(e.Graphics, UiIcon.Phone, new Rectangle(px(8), px(19), px(32), px(32)),
+                device.IsOnline ? blue : UiTheme.TextMuted);
+            TextFormatFlags flags = TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
+                TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding;
+            int textWidth = Math.Max(px(80), Width - px(94));
+            using (Font nameFont = new Font(UiTheme.FontFamily, 13.5F, FontStyle.Bold))
+                TextRenderer.DrawText(e.Graphics, device.Name, nameFont, new Rectangle(px(62), 0, textWidth, px(26)), UiTheme.Text, flags);
+            using (Font detailFont = new Font(UiTheme.FontFamily, 9F))
+                TextRenderer.DrawText(e.Graphics, device.Model, detailFont, new Rectangle(px(62), px(28), textWidth, px(18)), UiTheme.TextMuted, flags);
+            string status = device.MirrorStarting ? "连接中" : device.MirrorStopping ? "停止中" :
+                device.MirrorActive ? "正在投屏" : device.IsPlaceholder ? "未选择设备" :
+                device.AdbState == DeviceAdbState.Unauthorized ? "等待授权" :
+                device.AdbState == DeviceAdbState.Offline ? "设备离线" :
+                !device.IsSaved && device.IsOnline ? "新设备" : device.IsOnline ? "已连接" : "未连接";
+            if (device.IsOnline) status += "  ·  USB";
+            Color statusColor = device.MirrorActive || device.MirrorStarting ? blue : device.IsOnline ? UiTheme.Success : UiTheme.TextMuted;
+            using (Font statusFont = new Font(UiTheme.FontFamily, 8.25F))
+            {
+                int width = Math.Min(textWidth, TextRenderer.MeasureText(e.Graphics, status, statusFont,
+                    new Size(int.MaxValue, px(24)), flags).Width + px(29));
+                Rectangle pill = new Rectangle(px(62), px(53), width, px(24));
+                using (GraphicsPath path = RoundedPanel.CreateRoundedRect(pill, px(12)))
+                using (SolidBrush brush = new SolidBrush(device.IsOnline
+                    ? UiTheme.IsDark ? Color.FromArgb(32, 61, 96) : Color.FromArgb(232, 242, 255)
+                    : UiTheme.SurfaceMuted)) e.Graphics.FillPath(brush, path);
+                using (SolidBrush brush = new SolidBrush(statusColor))
+                    e.Graphics.FillEllipse(brush, pill.Left + px(10), pill.Top + px(9), px(6), px(6));
+                TextRenderer.DrawText(e.Graphics, status, statusFont,
+                    new Rectangle(pill.Left + px(22), pill.Top, pill.Width - px(27), pill.Height), statusColor, flags);
+            }
+            UiIconRenderer.Draw(e.Graphics, UiIcon.ChevronDown,
+                new Rectangle(Width - px(22), px(6), px(18), px(18)), UiTheme.TextMuted);
+            if (Focused && ShowFocusCues)
+                using (GraphicsPath path = RoundedPanel.CreateRoundedRect(Rectangle.Inflate(bounds, -px(2), -px(2)), px(10)))
+                using (Pen pen = new Pen(UiTheme.Accent, px(2))) e.Graphics.DrawPath(pen, path);
+        }
+
         private Rectangle ConnectButtonBounds
         {
             get { return new Rectangle(Width - 76, (Height - 32) / 2, 62, 32); }
@@ -1482,12 +1613,12 @@ namespace OMirror
             if (Shadow)
             {
                 Rectangle shadowBounds = new Rectangle(r.X + 2, r.Y + 3, r.Width, r.Height);
-                using (GraphicsPath shadowPath = CreateRoundedRect(shadowBounds, CornerRadius))
+                using (GraphicsPath shadowPath = CreateRoundedRect(shadowBounds, (int)Math.Round(CornerRadius * e.Graphics.DpiX / 96F)))
                 using (SolidBrush shadowBrush = new SolidBrush(Color.FromArgb(20, 0, 0, 0)))
                     e.Graphics.FillPath(shadowBrush, shadowPath);
             }
 
-            using (GraphicsPath path = CreateRoundedRect(r, CornerRadius))
+            using (GraphicsPath path = CreateRoundedRect(r, (int)Math.Round(CornerRadius * e.Graphics.DpiX / 96F)))
             using (SolidBrush fill = new SolidBrush(BackColor))
             using (Pen pen = new Pen(BorderColor, 1))
             {
@@ -1498,7 +1629,7 @@ namespace OMirror
 
         internal static GraphicsPath CreateRoundedRect(Rectangle bounds, int radius)
         {
-            int d = radius * 2;
+            int d = Math.Max(1, Math.Min(radius * 2, Math.Min(bounds.Width, bounds.Height)));
             GraphicsPath path = new GraphicsPath();
             path.AddArc(bounds.X, bounds.Y, d, d, 180, 90);
             path.AddArc(bounds.Right - d, bounds.Y, d, d, 270, 90);
@@ -1636,6 +1767,7 @@ namespace OMirror
 
         public MainForm()
         {
+            SuspendLayout();
             appDirectory = AppDomain.CurrentDomain.BaseDirectory;
             adbPath = Path.Combine(appDirectory, "scrcpy", "adb.exe");
             scrcpyPath = Path.Combine(appDirectory, "scrcpy", "scrcpy.exe");
@@ -1677,11 +1809,11 @@ namespace OMirror
 
             Text = "OMirror";
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(620, 520);
-            MinimumSize = new Size(636, 559);
+            ClientSize = new Size(480, 606);
             BackColor = background;
             ForeColor = foreground;
             Font = new Font(UiTheme.FontFamily, 9F, FontStyle.Regular, GraphicsUnit.Point);
+            AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
@@ -1689,17 +1821,27 @@ namespace OMirror
 
             WordmarkLabel title = new WordmarkLabel();
             title.Text = "OMirror";
-            title.Font = new Font(UiTheme.DisplayFontFamily, 18F, FontStyle.Regular);
+            title.Font = new Font(UiTheme.DisplayFontFamily, 21F, FontStyle.Regular);
             title.ForeColor = foreground;
             title.AutoSize = true;
-            title.Location = new Point(28, 18);
+            title.Location = new Point(26, 23);
             title.WordmarkDoubleClick += delegate { CenterActiveMirrorWindow(); };
             Controls.Add(title);
 
-            refreshButton = MakeIconButton(UiIcon.Refresh, "刷新设备", UiButtonKind.Secondary);
-            refreshButton.Location = new Point(552, 18);
-            refreshButton.Size = new Size(40, 40);
-            refreshButton.CornerRadius = 20;
+            Label subtitle = new Label();
+            subtitle.Text = "你的手机，触手可及。";
+            subtitle.Font = new Font(UiTheme.FontFamily, 9F);
+            subtitle.ForeColor = muted;
+            subtitle.AutoSize = true;
+            subtitle.Location = new Point(26, 65);
+            Controls.Add(subtitle);
+
+            refreshButton = MakeIconButton(UiIcon.Refresh, "刷新设备", UiButtonKind.Quiet);
+            refreshButton.Location = new Point(420, 36);
+            refreshButton.Size = new Size(34, 34);
+            refreshButton.CornerRadius = 17;
+            refreshButton.ShowBorder = true;
+            refreshButton.IconSize = 17;
             refreshButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             refreshButton.Click += delegate { RefreshDevices(); };
             Controls.Add(refreshButton);
@@ -1715,30 +1857,25 @@ namespace OMirror
             devicePanel.BackColor = card;
             devicePanel.BorderColor = UiTheme.Border;
             devicePanel.Shadow = false;
-            devicePanel.Location = new Point(28, 70);
-            devicePanel.Size = new Size(564, 178);
+            devicePanel.Location = new Point(26, 106);
+            devicePanel.CornerRadius = 16;
+            devicePanel.Size = new Size(428, 178);
             Controls.Add(devicePanel);
 
             activeDeviceRow = new DeviceSelectRow();
             activeDeviceRow.Name = "activeDeviceSelector";
             activeDeviceRow.Device = activeDevice;
             activeDeviceRow.ShowsChevron = true;
-            activeDeviceRow.Location = new Point(16, 14);
-            activeDeviceRow.Size = new Size(532, 64);
+            activeDeviceRow.Location = new Point(20, 20);
+            activeDeviceRow.Size = new Size(388, 80);
             activeDeviceRow.DeviceChosen += delegate { ToggleDeviceList(); };
             devicePanel.Controls.Add(activeDeviceRow);
             toolTip.SetToolTip(activeDeviceRow, "选择设备");
 
-            Panel deviceDivider = new Panel();
-            deviceDivider.BackColor = UiTheme.Border;
-            deviceDivider.Location = new Point(24, 88);
-            deviceDivider.Size = new Size(516, 1);
-            devicePanel.Controls.Add(deviceDivider);
-
             launchButton = MakeActionButton(UiIcon.Mirror, "投屏", UiButtonKind.Primary);
-            launchButton.Location = new Point(148, 105);
-            launchButton.Size = new Size(126, 48);
-            launchButton.CornerRadius = 14;
+            launchButton.Location = new Point(20, 119);
+            launchButton.Size = new Size(189, 38);
+            launchButton.CornerRadius = 9;
             launchButton.Enabled = false;
             launchButton.Click += delegate
             {
@@ -1748,10 +1885,10 @@ namespace OMirror
             devicePanel.Controls.Add(launchButton);
             toolTip.SetToolTip(launchButton, "启动有线投屏");
 
-            transferButton = MakeActionButton(UiIcon.Transfer, "文件", UiButtonKind.Secondary);
-            transferButton.Location = new Point(290, 105);
-            transferButton.Size = new Size(126, 48);
-            transferButton.CornerRadius = 14;
+            transferButton = MakeActionButton(UiIcon.Transfer, "文件互传", UiButtonKind.Primary);
+            transferButton.Location = new Point(219, 119);
+            transferButton.Size = new Size(189, 38);
+            transferButton.CornerRadius = 9;
             transferButton.Enabled = false;
             transferButton.Click += delegate
             {
@@ -1767,31 +1904,34 @@ namespace OMirror
             info.BackColor = card;
             info.BorderColor = UiTheme.Border;
             info.Shadow = false;
-            info.Location = new Point(28, 264);
-            info.Size = new Size(564, 208);
+            info.Location = new Point(26, 334);
+            info.CornerRadius = 16;
+            info.Size = new Size(428, 222);
             info.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
 
             Label infoTitle = new Label();
-            infoTitle.Text = "设置";
-            infoTitle.ForeColor = foreground;
-            infoTitle.Font = new Font(UiTheme.FontFamily, 11F, FontStyle.Bold);
+            infoTitle.Text = "偏好设置";
+            infoTitle.ForeColor = muted;
+            infoTitle.Font = new Font(UiTheme.FontFamily, 9F, FontStyle.Regular);
             infoTitle.AutoSize = true;
-            infoTitle.Location = new Point(22, 13);
-            info.Controls.Add(infoTitle);
+            infoTitle.Location = new Point(30, 307);
+            Controls.Add(infoTitle);
 
             screenOffToggle = new ToggleSwitch();
             screenOffToggle.Text = "仅熄手机屏幕";
-            screenOffToggle.Location = new Point(18, 39);
-            screenOffToggle.Size = new Size(528, 38);
+            screenOffToggle.Location = new Point(16, 1);
+            screenOffToggle.Icon = UiIcon.Moon;
+            screenOffToggle.Size = new Size(396, 54);
             screenOffToggle.Checked = LoadScreenOffSetting();
             screenOffToggle.CheckedChanged += ScreenOffSettingChanged;
             info.Controls.Add(screenOffToggle);
             toolTip.SetToolTip(screenOffToggle, "关闭手机实体屏幕，投屏保持运行");
 
             alwaysOnTopToggle = new ToggleSwitch();
-            alwaysOnTopToggle.Text = "保持在最顶层";
-            alwaysOnTopToggle.Location = new Point(18, 79);
-            alwaysOnTopToggle.Size = new Size(528, 38);
+            alwaysOnTopToggle.Text = "投屏窗口置顶";
+            alwaysOnTopToggle.Location = new Point(16, 56);
+            alwaysOnTopToggle.Icon = UiIcon.Pin;
+            alwaysOnTopToggle.Size = new Size(396, 54);
             alwaysOnTopToggle.Checked = LoadAlwaysOnTopSetting();
             alwaysOnTopToggle.CheckedChanged += AlwaysOnTopSettingChanged;
             info.Controls.Add(alwaysOnTopToggle);
@@ -1801,33 +1941,35 @@ namespace OMirror
             {
                 Panel divider = new Panel();
                 divider.BackColor = UiTheme.Border;
-                divider.Location = new Point(22, 78 + dividerIndex * 40);
-                divider.Size = new Size(520, 1);
+                divider.Location = new Point(16, 55 + dividerIndex * 55);
+                divider.Size = new Size(396, 1);
                 info.Controls.Add(divider);
             }
 
-            Label keyboardLabel = new Label();
-            keyboardLabel.Text = "键盘";
-            keyboardLabel.ForeColor = muted;
-            keyboardLabel.AutoSize = true;
-            keyboardLabel.Location = new Point(24, 131);
+            SettingLabel keyboardLabel = new SettingLabel();
+            keyboardLabel.Icon = UiIcon.Keyboard;
+            keyboardLabel.Text = "键盘模式";
+            keyboardLabel.ForeColor = foreground;
+            keyboardLabel.Size = new Size(170, 54);
+            keyboardLabel.Location = new Point(16, 111);
             info.Controls.Add(keyboardLabel);
 
             keyboardModeSelector = new ModeSelector();
             keyboardModeSelector.FirstText = "短语";
             keyboardModeSelector.SecondText = "数字选词";
-            keyboardModeSelector.Location = new Point(294, 120);
-            keyboardModeSelector.Size = new Size(252, 34);
+            keyboardModeSelector.Location = new Point(231, 122);
+            keyboardModeSelector.Size = new Size(181, 31);
             keyboardModeSelector.SelectedIndex = keyboardMode;
             keyboardModeSelector.SelectedIndexChanged += KeyboardModeChanged;
             info.Controls.Add(keyboardModeSelector);
             toolTip.SetToolTip(keyboardModeSelector, "短语：Shift 切换中英；数字选词：Shift+Space 切换中英");
 
-            Label themeLabel = new Label();
+            SettingLabel themeLabel = new SettingLabel();
+            themeLabel.Icon = UiIcon.Appearance;
             themeLabel.Text = "外观";
-            themeLabel.ForeColor = muted;
-            themeLabel.AutoSize = true;
-            themeLabel.Location = new Point(24, 171);
+            themeLabel.ForeColor = foreground;
+            themeLabel.Size = new Size(170, 54);
+            themeLabel.Location = new Point(16, 166);
             info.Controls.Add(themeLabel);
 
             themeModeSelector = new ModeSelector();
@@ -1835,8 +1977,8 @@ namespace OMirror
             themeModeSelector.FirstText = "自动";
             themeModeSelector.SecondText = "浅色";
             themeModeSelector.ThirdText = "深色";
-            themeModeSelector.Location = new Point(294, 160);
-            themeModeSelector.Size = new Size(252, 34);
+            themeModeSelector.Location = new Point(231, 177);
+            themeModeSelector.Size = new Size(181, 31);
             themeModeSelector.SelectedIndex = (int)themeMode;
             themeModeSelector.SelectedIndexChanged += ThemeModeChanged;
             info.Controls.Add(themeModeSelector);
@@ -1852,17 +1994,23 @@ namespace OMirror
             footerStatus = new Label();
             footerStatus.Text = "正在检查设备…";
             footerStatus.ForeColor = muted;
-            footerStatus.AutoSize = true;
-            footerStatus.Location = new Point(32, 493);
+            footerStatus.AutoSize = false;
+            footerStatus.AutoEllipsis = true;
+            footerStatus.Size = new Size(344, 23);
+            footerStatus.Font = new Font(UiTheme.FontFamily, 8.25F);
+            footerStatus.TextAlign = ContentAlignment.MiddleLeft;
+            footerStatus.TextChanged += delegate { toolTip.SetToolTip(footerStatus, footerStatus.Text); };
+            footerStatus.Location = new Point(26, 572);
             footerStatus.Anchor = AnchorStyles.Left | AnchorStyles.Bottom;
             Controls.Add(footerStatus);
 
             Label version = new Label();
-            version.Text = "v1.15.0";
+            version.Text = "v1.16.0";
             version.ForeColor = muted;
             version.AutoSize = false;
-            version.Location = new Point(512, 488);
-            version.Size = new Size(80, 24);
+            version.Location = new Point(378, 572);
+            version.Font = new Font(UiTheme.FontFamily, 8.25F);
+            version.Size = new Size(76, 23);
             version.TextAlign = ContentAlignment.MiddleRight;
             version.Anchor = AnchorStyles.Right | AnchorStyles.Bottom;
             Controls.Add(version);
@@ -1912,6 +2060,7 @@ namespace OMirror
             };
             UiTheme.ThemeChanged += ApplyTheme;
             Microsoft.Win32.SystemEvents.UserPreferenceChanged += SystemThemeChanged;
+            ResumeLayout(true);
         }
 
         internal bool IsRuntimeReady
@@ -2155,7 +2304,8 @@ namespace OMirror
             ModernButton button = MakeIconButton(icon, text, kind);
             button.IconOnly = false;
             button.Text = text;
-            button.Font = new Font(UiTheme.FontFamily, 9.5F, FontStyle.Bold);
+            button.Font = new Font(UiTheme.FontFamily, 9.75F, FontStyle.Regular);
+            button.IconSize = 17;
             return button;
         }
 
@@ -2759,7 +2909,7 @@ namespace OMirror
             }
             else if (device.MirrorActive)
             {
-                launchButton.Text = "停止";
+                launchButton.Text = "停止投屏";
                 launchButton.Icon = UiIcon.Stop;
                 launchButton.Kind = UiButtonKind.Secondary;
                 launchButton.Enabled = true;

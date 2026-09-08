@@ -6,7 +6,7 @@ This file is the compact source of truth for AI agents working in this repositor
 
 - Name: `OMirror`.
 - Platform: Windows desktop, WinForms on .NET Framework.
-- Current UI version: `1.15.0`; bundled runtime expected: scrcpy `4.1` with ADB `37.0.1`.
+- Current UI version: `1.16.0`; bundled runtime expected: scrcpy `4.1` with ADB `37.0.1`.
 - There is intentionally no `.csproj`: `build.ps1` invokes the .NET Framework `csc.exe` directly.
 - Repository source is self-contained. `dist/` and the legacy `devices.local.txt` are local-only and ignored.
 - Release tags use `vMAJOR.MINOR.PATCH`; the Windows asset is named `OMirror-MAJOR.MINOR.PATCH-windows-x64.zip` and contains the complete `OMirror` runtime folder, not only the executable.
@@ -46,11 +46,12 @@ Keyboard, screen-off, always-on-top, theme, selected-device, per-device keyboard
 - Mirror lifecycle is `Stopped / Starting / Running / Stopping / Recovering`. Each process has a generation id, so stale exit callbacks cannot alter a new session. Exit code `2` (disconnect) and unexpected nonzero exits may retry twice after 750ms and 2s; manual stop and keyboard hot-restart never consume the retry budget.
 - scrcpy stdout/stderr are read asynchronously. Normal runs retain a bounded memory tail; unexpected exit writes a redacted log. Keep only five diagnostics bundles, and never add diagnostics/artifacts to Git.
 - Theme mode persists as `0=auto`, `1=light`, or `2=dark`. Auto reads Windows `AppsUseLightTheme`; `SystemEvents.UserPreferenceChanged` hot-applies semantic colors to the main form, picker, open transfer forms, grids, and DWM title bars.
-- The main action is stateful: idle `投屏`, starting `连接中`, running `停止`, and stopping `停止中`. Existing matching scrcpy processes are adopted instead of duplicated, and process exit updates the UI asynchronously.
+- The main action is stateful: idle `投屏`, starting `连接中`, running `停止投屏`, and stopping `停止中`. Existing matching scrcpy processes are adopted instead of duplicated, and process exit updates the UI asynchronously.
 - UI text uses `Microsoft YaHei UI` for crisp Chinese GDI rendering and the installed `Segoe UI Variable Display Semibold` face only for the Latin product wordmark. Standard actions are vector-drawn icons with tooltips and accessible names; no emoji or bitmap icon font is required.
-- The application icon is the transparent pixel portrait in `assets/OMirror-icon-source.png`; `assets/OMirror.ico` contains native 16, 20, 24, 32, 40, 48, 64, 128, and 256 px frames. `build.ps1` embeds it as the executable icon, and `MainForm` explicitly loads the associated executable icon for consistent title-bar and taskbar rendering.
+- The application icon is the transparent pixel portrait in `assets/OMirror-icon-source.png`; `assets/OMirror.ico` contains native 16, 20, 24, 32, 40, 48, 64, 128, and 256 px frames. `build.ps1` embeds it as the executable icon; both `MainForm` and `TransferForm` explicitly load the associated executable icon for consistent title-bar and taskbar rendering.
 - `ModernButton` is a fully owner-drawn `Control`, not a native `Button`, and intentionally has no rounded Win32 `Region`. The single anti-aliased paint boundary avoids DPI-scaled corner fringes while the custom accessibility object preserves push-button semantics and keyboard activation.
 - `app.manifest` declares `PerMonitorV2,PerMonitor` plus the legacy `true/pm` fallback. Keep the existing `AutoScaleMode.Dpi` forms so Windows renders text and vectors at the monitor's native scale instead of bitmap-stretching the whole window.
+- UI layout is designed at 96 DPI. Both forms suspend layout while constructing controls and declare `AutoScaleDimensions = 96×96` before resuming; adding controls after the initial form scaling produces undersized bounds at 150%. Owner-drawn main controls scale vector geometry at paint time. The file window uses DPI-scaled runtime layout, with file-row/column dimensions explicitly scaled and a bounded activity drawer that leaves visible file rows at minimum size.
 - Input modes are deliberately different:
   - Short-phrase mode uses scrcpy default SDK keyboard and adds no `--keyboard`, `--raw-key-events`, or `--prefer-text` flag.
   - Numeric-candidate mode adds only `--keyboard=uhid`.
