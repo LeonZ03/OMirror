@@ -10,6 +10,7 @@ This file is the compact source of truth for AI agents working in this repositor
 - There is intentionally no `.csproj`: `build.ps1` invokes the .NET Framework `csc.exe` directly.
 - Repository source is self-contained. `dist/` and the legacy `devices.local.txt` are local-only and ignored.
 - Release tags use `vMAJOR.MINOR.PATCH`; the Windows asset is named `OMirror-MAJOR.MINOR.PATCH-windows-x64.zip` and contains the complete `OMirror` runtime folder, not only the executable.
+- Starting with the next release after `1.16.0`, the packaged runtime folder must contain `Uninstall.exe` next to `OMirror.exe`. Version `1.16.0` intentionally remains unchanged and does not contain the uninstaller.
 
 ## Source map
 
@@ -84,8 +85,11 @@ Expected output:
 
 ```text
 dist\OMirror\OMirror.exe
+dist\OMirror\Uninstall.exe
 dist\OMirror\scrcpy\...
 ```
+
+`Uninstall.exe` is a required deliverable for releases after `1.16.0`. It must remove the installed OMirror program files and OMirror shortcuts, then offer a clear choice to retain or delete `%LOCALAPPDATA%\OMirror` device records, preferences, and diagnostics. It should also detect and offer to remove the legacy `%LOCALAPPDATA%\Programs\PhoneMirror` program directory and `%LOCALAPPDATA%\PhoneMirror` state directory when either exists. Do not implement or backport it as part of the `1.16.0` release.
 
 Before committing:
 
@@ -95,7 +99,8 @@ Before committing:
 4. For transfer changes, validate both directions with a Unicode filename; for directory changes, include a nested Unicode folder and compare hashes.
 5. For Camera/listing changes, verify a large directory displays only the first batch and “更多” remains enabled.
 6. For lifecycle/input changes, run `OMirror.exe --stress-model <seed>` and, with only the target handset connected, `tests\Run-StabilityStress.ps1 -DeviceIndex 0 -DurationMinutes 10 -Seed <seed>`.
-7. For a release, package the complete `dist\OMirror` directory, calculate SHA-256, and provide concise release notes directly to the user for the GitHub form; do not maintain a separate release-notes file or commit the archive/bundled binaries.
+7. For every release after `1.16.0`, verify that `Uninstall.exe` is present beside `OMirror.exe` and exercise both data-retention choices before packaging.
+8. For a release, package the complete `dist\OMirror` directory, calculate SHA-256, and provide concise release notes directly to the user for the GitHub form; do not maintain a separate release-notes file or commit the archive/bundled binaries.
 
 ## Change constraints
 
