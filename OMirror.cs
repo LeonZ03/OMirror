@@ -1573,7 +1573,13 @@ namespace OMirror
         public DateTime RunningSinceUtc;
         public int ScreenPowerRequestId;
         public bool ScreenDesiredOff;
-        public bool ScreenOffApplied;
+        public volatile bool ScreenOffApplied;
+        public volatile bool ScreenPowerKnown;
+        public bool ScreenRepliesAvailable;
+        public int ScreenPolicyBusy;
+        public DateTime LastScreenWakeUtc;
+        public int ScreenOnAcknowledgements;
+        public int ScreenOffAcknowledgements;
         public int TopMostRequestId;
     }
 
@@ -1735,6 +1741,7 @@ namespace OMirror
         private readonly List<DeviceSelectRow> deviceRows = new List<DeviceSelectRow>();
         private readonly DeviceCard emptyDevice;
         private DeviceCard activeDevice;
+        private readonly Timer screenPolicyTimer;
         private readonly Timer refreshTimer;
         private readonly Timer restartTimer;
         private readonly Label footerStatus;
@@ -1757,7 +1764,6 @@ namespace OMirror
         private readonly string themeSettingsPath;
         private readonly string deviceStorePath;
         private readonly List<DeviceCard> pendingRestart = new List<DeviceCard>();
-        private readonly HashSet<DeviceCard> pendingWakeBeforeRestart = new HashSet<DeviceCard>();
         private readonly KeyboardCapture keyboardCapture;
         private int keyboardMode;
         private AppThemeMode themeMode;
@@ -1925,7 +1931,7 @@ namespace OMirror
             screenOffToggle.Checked = LoadScreenOffSetting();
             screenOffToggle.CheckedChanged += ScreenOffSettingChanged;
             info.Controls.Add(screenOffToggle);
-            toolTip.SetToolTip(screenOffToggle, "关闭手机实体屏幕，投屏保持运行");
+            toolTip.SetToolTip(screenOffToggle, "解锁后关闭手机实体屏幕；锁屏期间保持亮起，方便输入密码");
 
             alwaysOnTopToggle = new ToggleSwitch();
             alwaysOnTopToggle.Text = "投屏窗口置顶";
@@ -2015,6 +2021,14 @@ namespace OMirror
             version.Anchor = AnchorStyles.Right | AnchorStyles.Bottom;
             Controls.Add(version);
 
+            screenPolicyTimer = new Timer();
+            screenPolicyTimer.Interval = 1000;
+            screenPolicyTimer.Tick += delegate
+            {
+                foreach (DeviceCard device in SavedDevices())
+                    if (device.SessionState == MirrorSessionState.Running)
+                        QueueScreenPower(device);
+            };
             refreshTimer = new Timer();
             refreshTimer.Interval = 2500;
             refreshTimer.Tick += delegate { RefreshDevices(false); };
@@ -2026,6 +2040,8 @@ namespace OMirror
             keyboardCapture = new KeyboardCapture(this);
             FormClosed += delegate
             {
+                screenPolicyTimer.Stop();
+                screenPolicyTimer.Dispose();
                 foreach (DeviceCard device in DevicesSnapshot())
                     StopScreenControl(device, true);
                 UiTheme.ThemeChanged -= ApplyTheme;
@@ -2042,6 +2058,7 @@ namespace OMirror
                 RefreshDevices();
                 AdoptExistingMirrorsAsync();
                 refreshTimer.Start();
+                screenPolicyTimer.Start();
             };
             KeyDown += delegate(object sender, KeyEventArgs e)
             {
@@ -2521,7 +2538,6 @@ namespace OMirror
             device.ScreenPowerRequestId++;
             device.TopMostRequestId++;
             pendingRestart.Remove(device);
-            pendingWakeBeforeRestart.Remove(device);
             List<Process> running = FindMirrorProcesses(device);
             if (running.Count > 0)
             {
@@ -2997,6 +3013,10 @@ namespace OMirror
         private void AttachMirrorProcess(DeviceCard device, Process process, bool alreadyRunning)
         {
             int sessionGeneration = ++device.SessionGeneration;
+            device.ScreenPowerKnown = false;
+            device.ScreenRepliesAvailable = !alreadyRunning;
+            device.LastScreenWakeUtc = DateTime.MinValue;
+            device.ScreenDesiredOff = screenOffToggle.Checked;
             device.MirrorProcess = process;
             device.MirrorProcessId = process.Id;
             device.MirrorStarting = !alreadyRunning;
@@ -3015,7 +3035,7 @@ namespace OMirror
             }
             catch { }
             UpdateMirrorAction(device);
-            if (alreadyRunning && screenOffToggle.Checked)
+            if (alreadyRunning)
                 StartScreenControl(device);
         }
 
@@ -3094,8 +3114,7 @@ namespace OMirror
                         device.RunningSinceUtc = DateTime.UtcNow;
                         UpdateMirrorAction(device);
                         footerStatus.Text = device.Name + " 正在投屏 · " + KeyboardModeName();
-                        if (screenOffToggle.Checked)
-                            StartScreenControl(device);
+                        StartScreenControl(device);
                         ResetRecoveryAfterStableRun(device, sessionGeneration);
                     });
                 }
@@ -3232,7 +3251,7 @@ namespace OMirror
                 bool normalizeShortPhrase = keyboardMode == 0 && previousDeviceMode == 1;
                 string keyboardArg = keyboardMode == 1 ? " --keyboard=uhid" : string.Empty;
                 string args = string.Format(
-                    "--serial={0} --window-title=\"{1} USB Low Latency\" --video-codec=h264 --max-fps=60 --video-bit-rate=16M --video-buffer=0 --no-audio --shortcut-mod=lalt --window-x={2} --window-y={5} --window-width=450 --window-height=900 -V {4}{3}",
+                    "--serial={0} --window-title=\"{1} USB Low Latency\" --video-codec=h264 --max-fps=60 --video-bit-rate=16M --video-buffer=0 --no-audio --keep-active --shortcut-mod=lalt --window-x={2} --window-y={5} --window-width=450 --window-height=900 -V {4}{3}",
                     device.Serial, device.Name, device.LastWindowX, keyboardArg,
                     Diagnostics.DebugEnabled ? "debug" : "info", device.LastWindowY);
 
@@ -3250,12 +3269,18 @@ namespace OMirror
                 mirrorProcess.OutputDataReceived += delegate(object sender, DataReceivedEventArgs e)
                 {
                     if (!string.IsNullOrEmpty(e.Data))
+                    {
+                        ObserveScreenPowerReply(device, mirrorProcess, e.Data);
                         Diagnostics.Trace(device.Name, "scrcpy-out", e.Data);
+                    }
                 };
                 mirrorProcess.ErrorDataReceived += delegate(object sender, DataReceivedEventArgs e)
                 {
                     if (!string.IsNullOrEmpty(e.Data))
+                    {
+                        ObserveScreenPowerReply(device, mirrorProcess, e.Data);
                         Diagnostics.Trace(device.Name, "scrcpy-err", e.Data);
+                    }
                 };
                 AttachMirrorProcess(device, mirrorProcess, false);
                 mirrorProcess.BeginOutputReadLine();
@@ -3336,53 +3361,11 @@ namespace OMirror
         private void ScreenOffSettingChanged(object sender, EventArgs e)
         {
             SaveScreenOffSetting();
-            if (screenOffToggle.Checked)
-            {
-                foreach (DeviceCard device in SavedDevices())
-                    ApplyScreenSettingToRunning(device, true);
-                footerStatus.Text = "已开启“仅熄手机屏幕”；正在运行的投屏将热生效";
-            }
-            else
-            {
-                bool restartNeeded = false;
-                foreach (DeviceCard device in SavedDevices())
-                    restartNeeded = QueueScreenWakeRestart(device) || restartNeeded;
-                if (restartNeeded)
-                {
-                    restartTimer.Stop();
-                    restartTimer.Start();
-                    footerStatus.Text = "正在释放实体屏幕并恢复投屏…";
-                }
-                else
-                {
-                    footerStatus.Text = "已关闭“仅熄手机屏幕”；手机实体屏幕正在恢复";
-                }
-            }
-        }
-
-        private bool QueueScreenWakeRestart(DeviceCard device)
-        {
-            device.ScreenDesiredOff = false;
-            System.Threading.Interlocked.Increment(ref device.ScreenPowerRequestId);
-            List<Process> running = FindMirrorProcesses(device);
-            if (running.Count == 0)
-            {
-                System.Threading.ThreadPool.QueueUserWorkItem(delegate { SendAndroidWake(device); });
-                return false;
-            }
-
-            CaptureMirrorWindowPosition(device, running[0]);
-            if (!pendingRestart.Contains(device))
-                pendingRestart.Add(device);
-            pendingWakeBeforeRestart.Add(device);
-            device.StopRequested = true;
-            device.SessionState = MirrorSessionState.Stopping;
-            device.MirrorStopping = true;
-            device.MirrorStarting = false;
-            Diagnostics.Trace(device.Name, "mirror-restart-requested", "screen-wake");
-            System.Threading.Interlocked.Increment(ref device.TopMostRequestId);
-            StopMirrorProcesses(running, false);
-            return true;
+            foreach (DeviceCard device in SavedDevices())
+                ApplyScreenSettingToRunning(device, screenOffToggle.Checked);
+            footerStatus.Text = screenOffToggle.Checked
+                ? "正在请求关闭手机实体屏幕…"
+                : "正在请求恢复手机实体屏幕…";
         }
 
         private void ApplyScreenSettingToRunning(DeviceCard device, bool turnOff)
@@ -3390,6 +3373,7 @@ namespace OMirror
             // Retain the setting for a later launch without letting an idle device
             // overwrite the status message for the phone that is actually mirroring.
             device.ScreenDesiredOff = turnOff;
+            System.Threading.Interlocked.Increment(ref device.ScreenPowerRequestId);
             if (IsProcessRunning(device.MirrorProcess))
                 QueueScreenPower(device);
         }
@@ -3564,7 +3548,8 @@ namespace OMirror
 
         private void StartScreenControl(DeviceCard device)
         {
-            device.ScreenDesiredOff = true;
+            device.ScreenDesiredOff = screenOffToggle.Checked;
+            System.Threading.Interlocked.Increment(ref device.ScreenPowerRequestId);
             if (IsProcessRunning(device.MirrorProcess))
                 QueueScreenPower(device);
         }
@@ -3577,77 +3562,104 @@ namespace OMirror
                 return;
             }
             device.ScreenDesiredOff = false;
+            System.Threading.Interlocked.Increment(ref device.ScreenPowerRequestId);
             if (IsProcessRunning(device.MirrorProcess))
                 QueueScreenPower(device);
         }
 
         private void QueueScreenPower(DeviceCard device)
         {
-            int requestId = System.Threading.Interlocked.Increment(ref device.ScreenPowerRequestId);
+            if (System.Threading.Interlocked.CompareExchange(ref device.ScreenPolicyBusy, 1, 0) != 0)
+                return;
+            int requestId = device.ScreenPowerRequestId;
             int generation = device.SessionGeneration;
-            Diagnostics.Trace(device.Name, "screen-power-request",
-                "off=" + device.ScreenDesiredOff + " request=" + requestId + " generation=" + generation);
             System.Threading.ThreadPool.QueueUserWorkItem(delegate
             {
-                System.Threading.Thread.Sleep(150);
-                if (IsDisposed || requestId != device.ScreenPowerRequestId)
-                    return;
-                bool desiredOff = device.ScreenDesiredOff;
-                bool sent = desiredOff
-                    ? SendMirrorScreenPower(device, false)
-                    : SendAndroidWake(device);
-                if (!sent && requestId == device.ScreenPowerRequestId)
-                {
-                    System.Threading.Thread.Sleep(150);
-                    if (!IsDisposed && requestId == device.ScreenPowerRequestId)
-                    {
-                        sent = desiredOff
-                            ? SendMirrorScreenPower(device, false)
-                            : SendAndroidWake(device);
-                    }
-                }
-                if (IsDisposed || requestId != device.ScreenPowerRequestId ||
-                    generation != device.SessionGeneration)
-                    return;
                 try
                 {
+                    if (IsDisposed || !IsProcessRunning(device.MirrorProcess)) return;
+                    AdbResult policy = new AdbClient(adbPath, device.Serial).Shell("dumpsys window policy", 3000);
+                    bool? locked = policy.Success ? ScreenPowerPolicy.ReadLocked(policy.Output) : null;
+                    if (IsDisposed || requestId != device.ScreenPowerRequestId || generation != device.SessionGeneration)
+                        return;
+                    bool desiredOff = ScreenPowerPolicy.ShouldTurnOff(device.ScreenDesiredOff, locked);
+                    bool changed = !device.ScreenPowerKnown || device.ScreenOffApplied != desiredOff;
+                    bool sent = true;
+                    if (changed)
+                        sent = SendMirrorScreenPower(device, !desiredOff, requestId, generation);
+                    // Lock screens may time out after just ten seconds even when
+                    // Android reports a successful wake. Keep them awake until unlock.
+                    if (!desiredOff && locked != false &&
+                        (DateTime.UtcNow - device.LastScreenWakeUtc).TotalSeconds >= 2)
+                    {
+                        if (requestId != device.ScreenPowerRequestId || generation != device.SessionGeneration) return;
+                        bool woke = SendAndroidWake(device);
+                        if (woke) device.LastScreenWakeUtc = DateTime.UtcNow;
+                        sent = sent && woke;
+                    }
+                    if (!changed || IsDisposed || requestId != device.ScreenPowerRequestId ||
+                        generation != device.SessionGeneration) return;
                     BeginInvoke((MethodInvoker)delegate
                     {
-                        if (requestId != device.ScreenPowerRequestId ||
-                            generation != device.SessionGeneration)
-                            return;
+                        if (requestId != device.ScreenPowerRequestId || generation != device.SessionGeneration) return;
                         if (sent)
                         {
-                            device.ScreenOffApplied = desiredOff;
                             footerStatus.Text = desiredOff
-                                ? device.Name + "：已关闭手机实体屏幕，投屏继续运行"
-                                : device.Name + "：手机实体屏幕已恢复";
+                                ? device.Name + "：已关闭实体屏幕，投屏继续运行"
+                                : locked != false
+                                    ? device.Name + "：等待手机解锁，实体屏幕保持亮起"
+                                    : device.Name + "：已请求恢复实体屏幕";
                         }
-                        else
-                        {
-                            footerStatus.Text = device.Name + "：未能切换实体屏幕状态，请重新启动投屏后再试";
-                        }
+                        else footerStatus.Text = device.Name + "：未收到屏幕切换确认，正在重试";
                         Diagnostics.Trace(device.Name, "screen-power-result",
-                            "off=" + desiredOff + " sent=" + sent);
+                            "off=" + desiredOff + " locked=" + locked + " confirmed=" + sent);
                     });
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    Diagnostics.Trace(device.Name, "screen-policy-error", ex.GetType().Name);
+                }
+                finally { System.Threading.Interlocked.Exchange(ref device.ScreenPolicyBusy, 0); }
             });
         }
 
         private bool SendAndroidWake(DeviceCard device)
         {
-            AdbResult result = new AdbClient(adbPath, device.Serial)
-                .Shell("input keyevent 224", 5000);
-            return result.Success;
+            AdbClient client = new AdbClient(adbPath, device.Serial);
+            // Logical wake plus scrcpy --keep-active keeps the keyguard usable.
+            // DisplayManager power-on remains an unverified OEM workaround;
+            // do not apply it to every Android 15+ device.
+            bool awake = client.Shell("input keyevent 224", 5000).Success;
+            if (!awake) device.ScreenPowerKnown = false;
+            return awake;
         }
 
-        private bool SendMirrorScreenPower(DeviceCard device, bool turnOn)
+        private static void ObserveScreenPowerReply(DeviceCard device, Process process, string line)
+        {
+            if (!object.ReferenceEquals(device.MirrorProcess, process)) return;
+            if (line.TrimEnd().EndsWith("Device display turned on", StringComparison.Ordinal))
+            {
+                device.ScreenOffApplied = false;
+                device.ScreenPowerKnown = true;
+                System.Threading.Interlocked.Increment(ref device.ScreenOnAcknowledgements);
+            }
+            else if (line.TrimEnd().EndsWith("Device display turned off", StringComparison.Ordinal))
+            {
+                device.ScreenOffApplied = true;
+                device.ScreenPowerKnown = true;
+                System.Threading.Interlocked.Increment(ref device.ScreenOffAcknowledgements);
+            }
+        }
+
+        private bool SendMirrorScreenPower(DeviceCard device, bool turnOn, int requestId, int generation)
         {
             try
             {
                 lock (screenPowerInputGate)
                 {
+                    if (IsDisposed || requestId != device.ScreenPowerRequestId ||
+                        generation != device.SessionGeneration)
+                        return false;
                     Process process = device.MirrorProcess;
                     if (!IsProcessRunning(process))
                         return false;
@@ -3662,23 +3674,48 @@ namespace OMirror
                     }
                     if (window == IntPtr.Zero)
                         return false;
-                    IntPtr previousWindow = GetForegroundWindow();
-                    if (!TrySetForegroundWindow(window))
+                    if (requestId != device.ScreenPowerRequestId || generation != device.SessionGeneration)
                         return false;
-                    try
+                    // Deliver directly to SDL's window procedure: global IME hooks
+                    // must not eat Shift and turn the ON shortcut into another OFF.
+                    int replyBefore = System.Threading.Volatile.Read(ref device.ScreenOnAcknowledgements);
+                    if (!turnOn) replyBefore = System.Threading.Volatile.Read(ref device.ScreenOffAcknowledgements);
+                    bool sent = SendScreenPowerWindowShortcut(window, turnOn);
+                    if (!sent) return false;
+                    bool acknowledged = false;
+                    for (int attempt = 0; device.ScreenRepliesAvailable && attempt < 30; attempt++)
                     {
-                        System.Threading.Thread.Sleep(100);
-                        bool sent = SendScreenPowerShortcut(turnOn);
-                        // SendInput queues the keystrokes. Keep scrcpy focused
-                        // briefly so SDL consumes the shortcut before focus is restored.
-                        System.Threading.Thread.Sleep(150);
-                        return sent;
+                        if (IsDisposed || requestId != device.ScreenPowerRequestId ||
+                            generation != device.SessionGeneration || !IsProcessRunning(process))
+                            return false;
+                        int reply = turnOn
+                            ? System.Threading.Volatile.Read(ref device.ScreenOnAcknowledgements)
+                            : System.Threading.Volatile.Read(ref device.ScreenOffAcknowledgements);
+                        if (reply != replyBefore) { acknowledged = true; break; }
+                        System.Threading.Thread.Sleep(50);
                     }
-                    finally
+                    if (!device.ScreenRepliesAvailable)
                     {
-                        if (previousWindow != IntPtr.Zero && previousWindow != window)
-                            TrySetForegroundWindow(previousWindow);
+                        // A process adopted after reopening the panel has no readable
+                        // stdout pipe here. Check the INTERNAL physical display only:
+                        // scrcpy's virtual display normally stays ON even when the panel is OFF.
+                        System.Threading.Thread.Sleep(200);
+                        AdbResult power = new AdbClient(adbPath, device.Serial).Shell("dumpsys SurfaceFlinger", 3000);
+                        acknowledged = power.Success && ScreenPowerPolicy.ReadPhysicalPower(power.Output) == turnOn;
+                        if (IsDisposed || requestId != device.ScreenPowerRequestId || generation != device.SessionGeneration)
+                            return false;
                     }
+                    if (!acknowledged) return false;
+                    device.ScreenOffApplied = !turnOn;
+                    device.ScreenPowerKnown = true;
+                    if (sent && turnOn && requestId == device.ScreenPowerRequestId &&
+                        generation == device.SessionGeneration)
+                    {
+                        // Let the existing scrcpy controller release its display override
+                        // before waking Android's logical power state. Never toggle POWER.
+                        sent = SendAndroidWake(device);
+                    }
+                    return sent;
                 }
             }
             catch
@@ -3687,30 +3724,36 @@ namespace OMirror
             }
         }
 
-        private static bool SendScreenPowerShortcut(bool turnOn)
+        private static bool SendScreenPowerWindowShortcut(IntPtr window, bool turnOn)
         {
-            List<Input> inputs = new List<Input>();
-            AddKey(inputs, VirtualKeyLMenu, false);
-            if (turnOn)
-                AddKey(inputs, VirtualKeyLShift, false);
-            AddKey(inputs, VirtualKeyO, false);
-            AddKey(inputs, VirtualKeyO, true);
-            if (turnOn)
-                AddKey(inputs, VirtualKeyLShift, true);
-            AddKey(inputs, VirtualKeyLMenu, true);
             try
             {
-                return SendInput((uint)inputs.Count, inputs.ToArray(), Marshal.SizeOf(typeof(Input))) == inputs.Count;
+                if (!SendScreenPowerWindowKey(window, 0x12, 0x38, false)) return false;
+                if (turnOn && !SendScreenPowerWindowKey(window, 0x10, 0x2A, false)) return false;
+                return SendScreenPowerWindowKey(window, 0x4F, 0x18, false);
             }
             finally
             {
-                // Always release modifiers. This makes a rapid toggle unable to leave Alt held.
-                Input[] release = new Input[2];
-                release[0] = CreateKeyInput(VirtualKeyLShift, true);
-                release[1] = CreateKeyInput(VirtualKeyLMenu, true);
-                SendInput((uint)release.Length, release, Marshal.SizeOf(typeof(Input)));
+                SendScreenPowerWindowKey(window, 0x4F, 0x18, true);
+                if (turnOn) SendScreenPowerWindowKey(window, 0x10, 0x2A, true);
+                SendScreenPowerWindowKey(window, 0x12, 0x38, true);
             }
         }
+
+        private static bool SendScreenPowerWindowKey(IntPtr window, int key, int scanCode, bool keyUp)
+        {
+            // SDL derives both key identity and modifier state from these messages.
+            // Queue the complete chord before SDL pumps it. Synchronous sends let
+            // SDL's per-pump physical Shift reconciliation clear the modifier early.
+            int bits = 1 | (scanCode << 16);
+            if (keyUp) bits |= unchecked((int)0xC0000000);
+            return PostMessage(window, keyUp ? 0x0101u : 0x0100u,
+                new IntPtr(key), new IntPtr(bits));
+        }
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool PostMessage(IntPtr window, uint message,
+            IntPtr wParam, IntPtr lParam);
 
         private static bool TrySetForegroundWindow(IntPtr window)
         {
@@ -3941,48 +3984,14 @@ namespace OMirror
             restartTimer.Stop();
             DeviceCard[] devices = pendingRestart.ToArray();
             pendingRestart.Clear();
-            bool restoringScreen = false;
-
             foreach (DeviceCard device in devices)
             {
-                bool wakeBeforeLaunch = pendingWakeBeforeRestart.Remove(device);
                 StopMirrorProcesses(FindMirrorProcesses(device), true);
-                if (!device.IsSaved)
-                    continue;
-                if (!wakeBeforeLaunch)
-                {
-                    if (IsUsbDeviceOnline(device.Serial))
-                        LaunchDevice(device);
-                    continue;
-                }
-
-                restoringScreen = true;
-                System.Threading.ThreadPool.QueueUserWorkItem(delegate
-                {
-                    bool woke = SendAndroidWake(device);
-                    if (IsDisposed)
-                        return;
-                    try
-                    {
-                        BeginInvoke((MethodInvoker)delegate
-                        {
-                            if (IsUsbDeviceOnline(device.Serial))
-                                LaunchDevice(device);
-                            footerStatus.Text = woke
-                                ? device.Name + "：实体屏幕已恢复，可解锁"
-                                : device.Name + "：投屏已重建，请确认实体屏幕已亮起";
-                        });
-                    }
-                    catch { }
-                });
+                if (device.IsSaved && IsUsbDeviceOnline(device.Serial))
+                    LaunchDevice(device);
             }
-
             if (devices.Length > 0)
-            {
-                footerStatus.Text = restoringScreen
-                    ? "正在唤醒实体屏幕并重建投屏…"
-                    : "已热切换为“" + KeyboardModeName() + "”";
-            }
+                footerStatus.Text = "已热切换为“" + KeyboardModeName() + "”";
         }
 
         private List<Process> FindMirrorProcesses(DeviceCard device)

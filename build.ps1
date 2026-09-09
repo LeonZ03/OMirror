@@ -53,6 +53,7 @@ $sources = @(
     (Join-Path $projectRoot "DeviceRegistry.cs"),
     (Join-Path $projectRoot "AdbClient.cs"),
     (Join-Path $projectRoot "KeyboardCapture.cs"),
+    (Join-Path $projectRoot "ScreenPowerPolicy.cs"),
     (Join-Path $projectRoot "TransferForm.cs"),
     (Join-Path $projectRoot "Diagnostics.cs"),
     (Join-Path $projectRoot "StressModel.cs"),
